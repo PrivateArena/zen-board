@@ -53,3 +53,26 @@ func (p *Pipe) Close() error {
 	p.stdin.Close()
 	return p.cmd.Wait()
 }
+
+func NewPreviewPipe(width, height, fps int) (*Pipe, error) {
+	args := []string{
+		"-f", "rawvideo",
+		"-pixel_format", "rgba",
+		"-video_size", fmt.Sprintf("%dx%d", width, height),
+		"-framerate", fmt.Sprintf("%d", fps),
+		"-i", "pipe:0",
+		"-window_title", "Zen-Board Preview",
+	}
+
+	cmd := exec.Command("ffplay", args...)
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		return nil, err
+	}
+
+	if err := cmd.Start(); err != nil {
+		return nil, err
+	}
+
+	return &Pipe{cmd: cmd, stdin: stdin}, nil
+}

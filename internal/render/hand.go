@@ -11,6 +11,8 @@ import (
 
 type HandRenderer struct {
 	Sprite image.Image
+	TipX   int
+	TipY   int
 }
 
 func NewHandRenderer(path string) (*HandRenderer, error) {
@@ -33,13 +35,8 @@ func (h *HandRenderer) Draw(dst draw.Image, x, y int, frame int) {
 	// cycle of 60 frames (2 seconds at 30fps)
 	jitter := 3.0 * math.Sin(2*math.Pi*float64(frame)/60.0)
 	
-	offset := image.Pt(x, y+int(jitter))
-	
+	offset := image.Pt(x-h.TipX, y-h.TipY+int(jitter))
+
 	// Draw hand sprite
-	// Assuming the pen tip is at the top-left of the sprite (0,0 relative to sprite)
-	// If the tip is elsewhere, we need an offset here.
-	// For most "pen hands", the tip is roughly at (30, 20) or similar.
-	// Let's assume (0,0) for now and let user adjust or provide better asset.
-	
 	draw.Draw(dst, h.Sprite.Bounds().Add(offset), h.Sprite, image.Point{}, draw.Over)
 }

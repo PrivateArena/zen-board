@@ -9,6 +9,8 @@ type Project struct {
 	Height     int     `json:"height"`
 	TTSAddr    string  `json:"tts_addr"`
 	Speed      float64 `json:"speed"`
+	HandTipX   int     `json:"hand_tip_x"`
+	HandTipY   int     `json:"hand_tip_y"`
 }
 
 func NewDefaultProject() *Project {
@@ -20,6 +22,8 @@ func NewDefaultProject() *Project {
 		Height:     1080,
 		TTSAddr:    "http://localhost:5000",
 		Speed:      1.0,
+		HandTipX:   30,
+		HandTipY:   20,
 	}
 }
 
@@ -32,6 +36,8 @@ type DrawAction struct {
 	Tag       string  // e.g. "king_death"
 	WordIndex int     // Trigger after this word finishes
 	ImagePath string  // Resolved path to asset PNG
+	X, Y      int
+	W, H      int
 }
 
 type WordTiming struct {

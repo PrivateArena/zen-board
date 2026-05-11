@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"image"
 	"log"
 	"os"
 	"path/filepath"
@@ -23,7 +24,7 @@ func getBinaryDir() string {
 		return dir
 	}
 	dir := filepath.Dir(exe)
-	if strings.Contains(exe, "go-build") || strings.Contains(dir, "Temp") {
+	if strings.Contains(exe, "go-build") || strings.Contains(exe, os.TempDir()) {
 		dir, _ = os.Getwd()
 	}
 	return dir
@@ -55,18 +56,30 @@ func loadConfig() *model.Project {
 }
 
 func main() {
+	if err := Run(); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+}
+
+func Run() error {
 	conf := loadConfig()
 
-	scriptPath := flag.String("script", "", "Path to .zen script file")
-	assetsDir := flag.String("assets", conf.AssetsDir, "Directory containing image assets")
-	handPath := flag.String("hand", "./assets/hand.png", "Path to hand.png sprite")
-	outputPath := flag.String("o", conf.OutputPath, "Output video path")
-	fps := flag.Int("fps", conf.FPS, "Frames per second")
-	width := flag.Int("w", conf.Width, "Canvas width")
-	height := flag.Int("h", conf.Height, "Canvas height")
-	ttsAddr := flag.String("tts", conf.TTSAddr, "zen-tts server address")
-	speed := flag.Float64("speed", conf.Speed, "TTS speed multiplier")
-	flag.Parse()
+	fs := flag.NewFlagSet("zen-board", flag.ContinueOnError)
+	scriptPath := fs.String("script", "", "Path to .zen script file")
+	assetsDir := fs.String("assets", conf.AssetsDir, "Directory containing image assets")
+	handPath := fs.String("hand", "./assets/hand.png", "Path to hand.png sprite")
+	outputPath := fs.String("o", conf.OutputPath, "Output video path")
+	fps := fs.Int("fps", conf.FPS, "Frames per second")
+	width := fs.Int("w", conf.Width, "Canvas width")
+	height := fs.Int("h", conf.Height, "Canvas height")
+	ttsAddr := fs.String("tts", conf.TTSAddr, "zen-tts server address")
+	speed := fs.Float64("speed", conf.Speed, "TTS speed multiplier")
+	preview := fs.Bool("preview", false, "Preview render in real-time via ffplay")
+	
+	if err := fs.Parse(os.Args[1:]); err != nil {
+		return err
+	}
 
 	// Apply final values back to project config
 	conf.ScriptPath = *scriptPath
@@ -79,13 +92,13 @@ func main() {
 	conf.Speed = *speed
 
 	if conf.ScriptPath == "" {
-		log.Fatal("Error: -script is required")
+		return fmt.Errorf("-script is required")
 	}
 
 	// 1. Parse Script
 	scriptData, err := os.ReadFile(conf.ScriptPath)
 	if err != nil {
-		log.Fatalf("Error reading script: %v", err)
+		return fmt.Errorf("reading script: %w", err)
 	}
 	lines := script.Parse(string(scriptData))
 
@@ -95,127 +108,136 @@ func main() {
 	var allWordTimings []model.WordTiming
 	currentTime := 0.0
 
+	type processedLine struct {
+		startTime  float64
+		duration   float64
+		wordOffset int
+		actions    []model.DrawAction
+	}
+	var pLines []processedLine
+
 	fmt.Println("Synthesizing TTS...")
 	for _, line := range lines {
 		if line.Text == "" {
-			// Handle WAIT tags in line.Actions
+			waitDuration := 0.0
 			for _, action := range line.Actions {
 				if strings.HasPrefix(action.Tag, "WAIT:") {
-					waitStr := strings.TrimPrefix(action.Tag, "WAIT:")
 					var waitVal float64
-					fmt.Sscanf(waitStr, "%f", &waitVal)
-					currentTime += waitVal
+					fmt.Sscanf(strings.TrimPrefix(action.Tag, "WAIT:"), "%f", &waitVal)
+					waitDuration += waitVal
 				}
+			}
+			if waitDuration > 0 {
+				pLines = append(pLines, processedLine{
+					startTime: currentTime,
+					duration:  waitDuration,
+				})
+				currentTime += waitDuration
 			}
 			continue
 		}
 
 		chunk, err := client.Synthesize(line.Text, *speed)
 		if err != nil {
-			log.Fatalf("TTS Error: %v", err)
+			return fmt.Errorf("TTS Error: %w", err)
 		}
 		audioChunks = append(audioChunks, chunk)
-		
+
 		duration, _ := tts.GetWAVDuration(chunk)
+		wordOffset := len(allWordTimings)
 		wordTimings := tts.EstimateWordTimings(line.Text, duration, currentTime)
 		allWordTimings = append(allWordTimings, wordTimings...)
-		
-		// Map DrawActions to actual timestamps based on WordIndex
-		// (This will be used in Timeline building)
-		
+
+		pLines = append(pLines, processedLine{
+			startTime:  currentTime,
+			duration:   duration,
+			wordOffset: wordOffset,
+			actions:    line.Actions,
+		})
+
 		currentTime += duration
 	}
 
 	finalAudio, err := tts.ConcatenateWAVs(audioChunks)
 	if err != nil {
-		log.Fatalf("WAV Concat Error: %v", err)
+		return fmt.Errorf("WAV Concat Error: %w", err)
 	}
-	err = tts.SaveWAV("temp_audio.wav", finalAudio)
+
+	af, err := os.CreateTemp("", "zen-audio-*.wav")
 	if err != nil {
-		log.Fatalf("WAV Save Error: %v", err)
+		return fmt.Errorf("temp audio: %w", err)
 	}
-	defer os.Remove("temp_audio.wav")
+	af.Write(finalAudio)
+	af.Close()
+	audioTmp := af.Name()
+	defer os.Remove(audioTmp)
 
 	// 3. Build Timeline
-	var events []model.FrameEvent
-	totalFrames := int(currentTime * float64(conf.FPS))
-	
-	// Track which word index in allWordTimings corresponds to each line
-	// This is a bit tricky due to wait actions.
-	// For now, let's just find the draw actions and map them.
-	
-	wordOffset := 0
-	lineTimeOffset := 0.0
-	for _, line := range lines {
-		if line.Text == "" {
-			for _, action := range line.Actions {
-				if strings.HasPrefix(action.Tag, "WAIT:") {
-					var waitVal float64
-					fmt.Sscanf(strings.TrimPrefix(action.Tag, "WAIT:"), "%f", &waitVal)
-					lineTimeOffset += waitVal
+	timeline := &model.Timeline{
+		Words:     allWordTimings,
+		AudioPath: audioTmp,
+		Duration:  currentTime,
+	}
+
+	for _, pl := range pLines {
+		for _, action := range pl.actions {
+			if strings.HasPrefix(action.Tag, "WAIT:") {
+				continue
+			}
+
+			// Find trigger time
+			triggerTime := pl.startTime
+			if action.WordIndex > 0 {
+				triggerWordIdx := pl.wordOffset + action.WordIndex - 1
+				if triggerWordIdx >= 0 && triggerWordIdx < len(allWordTimings) {
+					triggerTime = allWordTimings[triggerWordIdx].Start
+				} else {
+					log.Printf("Warning: WordIndex %d OOB for line starting at %.2fs", action.WordIndex, pl.startTime)
 				}
 			}
-			continue
-		}
-		
-		lineDuration := 0.0
-		// We need to know this line's duration to update lineTimeOffset
-		// Actually it's easier if we just track word indices globally.
-		
-		for _, action := range line.Actions {
-			if strings.HasPrefix(action.Tag, "WAIT:") { continue }
-			
-			// Find the word that triggers this action
-			triggerWordIdx := wordOffset + action.WordIndex - 1
-			if triggerWordIdx < 0 { triggerWordIdx = 0 }
-			if triggerWordIdx >= len(allWordTimings) { triggerWordIdx = len(allWordTimings) - 1 }
-			
-			triggerTime := allWordTimings[triggerWordIdx].Start
+
 			startFrame := int(triggerTime * float64(conf.FPS))
-			
 			// Default 2 second reveal
 			revealDuration := 2.0
-			endFrame := startFrame + int(revealDuration * float64(conf.FPS))
-			
-			events = append(events, model.FrameEvent{
+			endFrame := startFrame + int(revealDuration*float64(conf.FPS))
+
+			x, y := action.X, action.Y
+			if x == 0 && y == 0 {
+				x, y = 100, 100
+			}
+
+			timeline.Events = append(timeline.Events, model.FrameEvent{
 				TargetImage: action.Tag,
 				StartFrame:  startFrame,
 				EndFrame:    endFrame,
-				X:           100, // TODO: Smart positioning or from tag
-				Y:           100,
+				X:           x,
+				Y:           y,
+				Width:       action.W,
+				Height:      action.H,
 			})
 		}
-		
-		// Update offsets for next line
-		wordsInLine := len(strings.Fields(line.Text))
-		// Get duration of this line's chunk (we should have stored it)
-		// Let's re-calculate or store it better. 
-		// For now, assume it's the duration of the words.
-		if wordsInLine > 0 {
-			lineDuration = allWordTimings[wordOffset+wordsInLine-1].End - allWordTimings[wordOffset].Start
-		}
-		
-		wordOffset += wordsInLine
-		lineTimeOffset += lineDuration
 	}
 
 	// 4. Subtitles
-	assData := subtitle.GenerateASS(allWordTimings)
-	err = os.WriteFile("temp_subs.ass", []byte(assData), 0644)
+	assData := subtitle.GenerateASS(timeline.Words, conf.Width, conf.Height)
+	sf, err := os.CreateTemp("", "zen-subs-*.ass")
 	if err != nil {
-		log.Fatalf("ASS Save Error: %v", err)
+		return fmt.Errorf("temp subs: %w", err)
 	}
-	defer os.Remove("temp_subs.ass")
+	sf.Write([]byte(assData))
+	sf.Close()
+	subsTmp := sf.Name()
+	defer os.Remove(subsTmp)
 
 	// 5. Rendering Engine
-	engine, err := render.NewEngine(conf.Width, conf.Height, conf.FPS, *handPath)
+	engine, err := render.NewEngine(conf.Width, conf.Height, conf.FPS, *handPath, conf.HandTipX, conf.HandTipY)
 	if err != nil {
-		log.Fatalf("Engine Error: %v", err)
+		return fmt.Errorf("engine: %w", err)
 	}
 
 	// Load Assets
 	fmt.Println("Loading assets...")
-	for _, ev := range events {
+	for _, ev := range timeline.Events {
 		assetPath := filepath.Join(conf.AssetsDir, ev.TargetImage+".png")
 		err := engine.LoadAsset(ev.TargetImage, assetPath)
 		if err != nil {
@@ -223,28 +245,66 @@ func main() {
 		}
 	}
 
-	// 6. FFmpeg Pipe
-	pipe, err := ffmpeg.NewPipe(conf.OutputPath, "temp_audio.wav", "temp_subs.ass", conf.Width, conf.Height, conf.FPS)
+	// 6. Pipe (FFmpeg or ffplay)
+	var pipe *ffmpeg.Pipe
+	if *preview {
+		pipe, err = ffmpeg.NewPreviewPipe(conf.Width, conf.Height, conf.FPS)
+	} else {
+		pipe, err = ffmpeg.NewPipe(conf.OutputPath, audioTmp, subsTmp, conf.Width, conf.Height, conf.FPS)
+	}
 	if err != nil {
-		log.Fatalf("FFmpeg Error: %v", err)
+		return fmt.Errorf("pipe: %w", err)
 	}
 
-	fmt.Printf("Rendering %d frames...\n", totalFrames)
-	for f := 0; f < totalFrames; f++ {
-		frame := engine.RenderFrame(f, events)
-		err := pipe.WriteFrame(frame.Pix)
-		if err != nil {
-			log.Fatalf("Pipe Write Error: %v", err)
+	engine.StartWorkers()
+	totalFrames := int(timeline.Duration * float64(conf.FPS))
+
+	// Feed jobs in a goroutine
+	go func() {
+		for f := 0; f < totalFrames; f++ {
+			engine.Pool.Jobs <- render.FrameJob{
+				Index:  f,
+				Events: timeline.Events,
+			}
 		}
-		// Return buffer to pool
-		engine.Pool.BufferPool.Put(frame)
-		
-		if f%30 == 0 {
-			fmt.Printf("\rProgress: %d/%d (%.1f%%)", f, totalFrames, float64(f)*100/float64(totalFrames))
+		close(engine.Pool.Jobs)
+	}()
+
+	fmt.Printf("Rendering %d frames (parallel)...\n", totalFrames)
+
+	// Collect results in order
+	resultsMap := make(map[int]*image.RGBA)
+	nextFrame := 0
+
+	for nextFrame < totalFrames {
+		res := <-engine.Pool.Results
+		resultsMap[res.Index] = res.Frame
+
+		// Drain as many sequential frames as possible
+		for {
+			frame, available := resultsMap[nextFrame]
+			if !available {
+				break
+			}
+
+			err := pipe.WriteFrame(frame.Pix)
+			if err != nil {
+				return fmt.Errorf("pipe write: %w", err)
+			}
+
+			// Clean up and return to pool
+			delete(resultsMap, nextFrame)
+			engine.Pool.BufferPool.Put(frame)
+
+			if nextFrame%30 == 0 {
+				fmt.Printf("\rProgress: %d/%d (%.1f%%)", nextFrame, totalFrames, float64(nextFrame)*100/float64(totalFrames))
+			}
+			nextFrame++
 		}
 	}
 	fmt.Println("\nFinishing encoding...")
 	pipe.Close()
 
 	fmt.Printf("Done! Video saved to %s\n", conf.OutputPath)
+	return nil
 }

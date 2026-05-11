@@ -8,7 +8,7 @@ import (
 )
 
 var (
-	drawRegex = regexp.MustCompile(`\[draw:([^\]]+)\]`)
+	drawRegex = regexp.MustCompile(`\[draw:([^\]@]+)(?:@([\d,]+))?\]`)
 	waitRegex = regexp.MustCompile(`\[wait:([\d.]+)\]`)
 )
 
@@ -47,6 +47,7 @@ func extractActions(line string) (string, []model.DrawAction) {
 		tag        string
 		isWait     bool
 		waitVal    float64
+		x, y, w, h int
 	}
 	
 	var tags []tagInfo
@@ -55,7 +56,20 @@ func extractActions(line string) (string, []model.DrawAction) {
 	
 	drawMatches := drawRegex.FindAllStringSubmatchIndex(line, -1)
 	for _, m := range drawMatches {
-		tags = append(tags, tagInfo{start: m[0], end: m[1], tag: line[m[2]:m[3]]})
+		tag := line[m[2]:m[3]]
+		ti := tagInfo{start: m[0], end: m[1], tag: tag}
+		if m[4] != -1 && m[5] != -1 {
+			coords := strings.Split(line[m[4]:m[5]], ",")
+			if len(coords) >= 2 {
+				ti.x, _ = strconv.Atoi(coords[0])
+				ti.y, _ = strconv.Atoi(coords[1])
+			}
+			if len(coords) >= 4 {
+				ti.w, _ = strconv.Atoi(coords[2])
+				ti.h, _ = strconv.Atoi(coords[3])
+			}
+		}
+		tags = append(tags, ti)
 	}
 	
 	waitMatches := waitRegex.FindAllStringSubmatchIndex(line, -1)
@@ -90,6 +104,10 @@ func extractActions(line string) (string, []model.DrawAction) {
 			actions = append(actions, model.DrawAction{
 				Tag:       t.tag,
 				WordIndex: wordCount,
+				X:         t.x,
+				Y:         t.y,
+				W:         t.w,
+				H:         t.h,
 			})
 		}
 		

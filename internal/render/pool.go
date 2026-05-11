@@ -4,18 +4,23 @@ import (
 	"image"
 	"runtime"
 	"sync"
+	"zen-board/internal/model"
 )
 
 type FrameJob struct {
+	Index  int
+	Events []model.FrameEvent
+}
+
+type RenderResult struct {
 	Index int
-	// Additional data needed for rendering this frame
-	// will be added when engine.go is implemented
+	Frame *image.RGBA
 }
 
 type RenderPool struct {
-	Workers int
-	Jobs    chan FrameJob
-	Results chan *image.RGBA
+	Workers    int
+	Jobs       chan FrameJob
+	Results    chan RenderResult
 	BufferPool *sync.Pool
 }
 
@@ -24,7 +29,7 @@ func NewRenderPool(width, height int) *RenderPool {
 	return &RenderPool{
 		Workers: workers,
 		Jobs:    make(chan FrameJob, workers*2),
-		Results: make(chan *image.RGBA, workers*2),
+		Results: make(chan RenderResult, workers*2),
 		BufferPool: &sync.Pool{
 			New: func() interface{} {
 				return image.NewRGBA(image.Rect(0, 0, width, height))

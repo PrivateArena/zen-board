@@ -17,11 +17,13 @@ type Engine struct {
 	AssetMu       sync.RWMutex
 }
 
-func NewEngine(w, h, fps int, handPath string) (*Engine, error) {
+func NewEngine(w, h, fps int, handPath string, tipX, tipY int) (*Engine, error) {
 	hr, err := NewHandRenderer(handPath)
 	if err != nil {
 		return nil, err
 	}
+	hr.TipX = tipX
+	hr.TipY = tipY
 
 	return &Engine{
 		Width:  w,
@@ -31,6 +33,20 @@ func NewEngine(w, h, fps int, handPath string) (*Engine, error) {
 		Hand:   hr,
 		Assets: make(map[string]image.Image),
 	}, nil
+}
+
+func (e *Engine) StartWorkers() {
+	for i := 0; i < e.Pool.Workers; i++ {
+		go func() {
+			for job := range e.Pool.Jobs {
+				frame := e.RenderFrame(job.Index, job.Events)
+				e.Pool.Results <- RenderResult{
+					Index: job.Index,
+					Frame: frame,
+				}
+			}
+		}()
+	}
 }
 
 func (e *Engine) LoadAsset(name, path string) error {

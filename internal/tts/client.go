@@ -24,7 +24,10 @@ type ttsRequest struct {
 }
 
 func (c *TTSClient) Synthesize(text string, speed float64) ([]byte, error) {
-	reqBody, _ := json.Marshal(ttsRequest{Text: text, Speed: speed})
+	reqBody, err := json.Marshal(ttsRequest{Text: text, Speed: speed})
+	if err != nil {
+		return nil, fmt.Errorf("marshal error: %w", err)
+	}
 	resp, err := http.Post(c.Addr+"/tts", "application/json", bytes.NewBuffer(reqBody))
 	if err != nil {
 		return nil, err
@@ -52,7 +55,8 @@ func ConcatenateWAVs(chunks [][]byte) ([]byte, error) {
 	var totalDataSize uint32
 	var header []byte
 
-	// Extract header from first chunk
+	// Use first 44 bytes as template, but we will update sizes later.
+	// We assume standard 44-byte header for the output, but inputs can be different.
 	if len(chunks[0]) < 44 {
 		return nil, fmt.Errorf("WAV chunk too small")
 	}
@@ -62,14 +66,27 @@ func ConcatenateWAVs(chunks [][]byte) ([]byte, error) {
 	var result bytes.Buffer
 	result.Write(header)
 
-	for i, chunk := range chunks {
-		if len(chunk) < 44 {
-			continue
+	for _, chunk := range chunks {
+		// Find data chunk
+		pos := 12
+		found := false
+		for pos+8 <= len(chunk) {
+			chunkID := string(chunk[pos : pos+4])
+			chunkSize := binary.LittleEndian.Uint32(chunk[pos+4 : pos+8])
+			if chunkID == "data" {
+				result.Write(chunk[pos+8 : pos+8+int(chunkSize)])
+				totalDataSize += chunkSize
+				found = true
+				break
+			}
+			pos += 8 + int(chunkSize)
+			if chunkSize%2 != 0 {
+				pos++
+			}
 		}
-		data := chunk[44:]
-		result.Write(data)
-		totalDataSize += uint32(len(data))
-		_ = i
+		if !found {
+			return nil, fmt.Errorf("missing data chunk in WAV chunk")
+		}
 	}
 
 	final := result.Bytes()

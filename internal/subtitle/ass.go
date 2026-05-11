@@ -6,14 +6,14 @@ import (
 	"zen-board/internal/model"
 )
 
-func GenerateASS(timings []model.WordTiming) string {
+func GenerateASS(timings []model.WordTiming, width, height int) string {
 	var b strings.Builder
 
 	// Header
 	b.WriteString("[Script Info]\n")
 	b.WriteString("ScriptType: v4.00+\n")
-	b.WriteString("PlayResX: 1920\n")
-	b.WriteString("PlayResY: 1080\n\n")
+	b.WriteString(fmt.Sprintf("PlayResX: %d\n", width))
+	b.WriteString(fmt.Sprintf("PlayResY: %d\n\n", height))
 
 	b.WriteString("[V4+ Styles]\n")
 	b.WriteString("Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\n")

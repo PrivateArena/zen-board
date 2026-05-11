@@ -6,27 +6,46 @@ import (
 )
 
 func GetWAVDuration(data []byte) (float64, error) {
-	if len(data) < 44 {
+	if len(data) < 12 {
 		return 0, fmt.Errorf("WAV too small")
 	}
 
-	// Format chunk starts at byte 12
-	// "fmt " at 12
-	// size at 16
-	// type at 20
-	// channels at 22
-	// sample rate at 24
-	// byte rate at 28
-	// block align at 32
-	// bits per sample at 34
+	if string(data[0:4]) != "RIFF" || string(data[8:12]) != "WAVE" {
+		return 0, fmt.Errorf("not a valid WAVE file")
+	}
 
-	channels := binary.LittleEndian.Uint16(data[22:24])
-	sampleRate := binary.LittleEndian.Uint32(data[24:28])
-	bitsPerSample := binary.LittleEndian.Uint16(data[34:36])
+	var channels uint16
+	var sampleRate uint32
+	var bitsPerSample uint16
+	var dataSize uint32
+	foundFmt := false
+	foundData := false
 
-	// Data chunk usually starts at 36 ("data")
-	// size at 40
-	dataSize := binary.LittleEndian.Uint32(data[40:44])
+	pos := 12
+	for pos+8 <= len(data) {
+		chunkID := string(data[pos : pos+4])
+		chunkSize := binary.LittleEndian.Uint32(data[pos+4 : pos+8])
+		nextPos := pos + 8 + int(chunkSize)
+
+		if chunkID == "fmt " && chunkSize >= 16 {
+			channels = binary.LittleEndian.Uint16(data[pos+10 : pos+12])
+			sampleRate = binary.LittleEndian.Uint32(data[pos+12 : pos+16])
+			bitsPerSample = binary.LittleEndian.Uint16(data[pos+22 : pos+24])
+			foundFmt = true
+		} else if chunkID == "data" {
+			dataSize = chunkSize
+			foundData = true
+		}
+
+		pos = nextPos
+		if chunkSize%2 != 0 {
+			pos++
+		}
+	}
+
+	if !foundFmt || !foundData {
+		return 0, fmt.Errorf("missing fmt or data chunk")
+	}
 
 	if channels == 0 || sampleRate == 0 || bitsPerSample == 0 {
 		return 0, fmt.Errorf("invalid WAV parameters")
