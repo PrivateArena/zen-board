@@ -11,6 +11,7 @@ type Project struct {
 	Speed      float64 `json:"speed"`
 	HandTipX   int     `json:"hand_tip_x"`
 	HandTipY   int     `json:"hand_tip_y"`
+	Voice      string  `json:"voice"`
 }
 
 func NewDefaultProject() *Project {
@@ -24,6 +25,7 @@ func NewDefaultProject() *Project {
 		Speed:      1.0,
 		HandTipX:   30,
 		HandTipY:   20,
+		Voice:      "am_adam",
 	}
 }
 

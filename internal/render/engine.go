@@ -7,6 +7,9 @@ import (
 	"os"
 	"sync"
 	"zen-board/internal/model"
+
+	_ "image/jpeg"
+	_ "image/png"
 )
 
 type Engine struct {
@@ -95,8 +98,34 @@ func (e *Engine) RenderFrame(frameNum int, events []model.FrameEvent) *image.RGB
 			continue
 		}
 
+		var renderW, renderH int
+		var renderX, renderY int
+
 		if ev.Width > 0 && ev.Height > 0 {
-			key := fmt.Sprintf("%s_%d_%d", ev.TargetImage, ev.Width, ev.Height)
+			srcW := img.Bounds().Dx()
+			srcH := img.Bounds().Dy()
+			ratioSrc := float64(srcW) / float64(srcH)
+			ratioTarget := float64(ev.Width) / float64(ev.Height)
+
+			if ratioSrc > ratioTarget {
+				renderW = ev.Width
+				renderH = int(float64(ev.Width) / ratioSrc)
+				if renderH <= 0 {
+					renderH = 1
+				}
+			} else {
+				renderH = ev.Height
+				renderW = int(float64(ev.Height) * ratioSrc)
+				if renderW <= 0 {
+					renderW = 1
+				}
+			}
+
+			// Center the scaled image inside the bounding box of ev.X, ev.Y, ev.Width, ev.Height
+			renderX = ev.X + (ev.Width-renderW)/2
+			renderY = ev.Y + (ev.Height-renderH)/2
+
+			key := fmt.Sprintf("%s_%d_%d", ev.TargetImage, renderW, renderH)
 			e.AssetMu.RLock()
 			scaledImg, ok := e.ScaledAssets[key]
 			e.AssetMu.RUnlock()
@@ -105,12 +134,17 @@ func (e *Engine) RenderFrame(frameNum int, events []model.FrameEvent) *image.RGB
 				img = scaledImg
 			} else {
 				// Scale and cache
-				scaledImg = scaleImage(img, ev.Width, ev.Height)
+				scaledImg = scaleImage(img, renderW, renderH)
 				e.AssetMu.Lock()
 				e.ScaledAssets[key] = scaledImg
 				e.AssetMu.Unlock()
 				img = scaledImg
 			}
+		} else {
+			renderW = img.Bounds().Dx()
+			renderH = img.Bounds().Dy()
+			renderX = ev.X
+			renderY = ev.Y
 		}
 
 		progress := float64(frameNum-ev.StartFrame) / float64(ev.EndFrame-ev.StartFrame)
@@ -122,14 +156,14 @@ func (e *Engine) RenderFrame(frameNum int, events []model.FrameEvent) *image.RGB
 		mask := GenerateMask(img.Bounds().Dx(), img.Bounds().Dy(), progress, maskCfg)
 		
 		// Draw masked image onto canvas
-		destRect := image.Rect(ev.X, ev.Y, ev.X+img.Bounds().Dx(), ev.Y+img.Bounds().Dy())
+		destRect := image.Rect(renderX, renderY, renderX+img.Bounds().Dx(), renderY+img.Bounds().Dy())
 		draw.DrawMask(buf, destRect, img, image.Point{}, mask, image.Point{}, draw.Over)
 
 		// Hand follows the LAST active reveal event
 		if progress < 1.0 {
 			fx, fy := GetFrontierPoint(img.Bounds().Dx(), img.Bounds().Dy(), progress, maskCfg)
-			activeHandX = ev.X + fx
-			activeHandY = ev.Y + fy
+			activeHandX = renderX + fx
+			activeHandY = renderY + fy
 			handVisible = true
 		}
 	}

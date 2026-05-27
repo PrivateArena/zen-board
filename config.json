@@ -1,9 +1,10 @@
 {
-  "tts_addr": "http://localhost:5000",
+  "tts_addr": "http://localhost:5055",
   "fps": 30,
   "width": 1920,
   "height": 1080,
   "assets_dir": "./assets",
   "output_path": "output.mp4",
-  "speed": 1.0
+  "speed": 1.0,
+  "voice": "am_adam"
 }

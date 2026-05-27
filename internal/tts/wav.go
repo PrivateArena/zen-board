@@ -130,3 +130,19 @@ func CreateWAVHeader(params WAVParams, dataSize uint32) []byte {
 
 	return header
 }
+
+func CreateSilentWAV(params WAVParams, duration float64) []byte {
+	bytesPerSample := uint32(params.BitsPerSample) / 8
+	dataSize := uint32(duration * float64(params.SampleRate) * float64(params.Channels) * float64(bytesPerSample))
+	// Data size must be even
+	if dataSize%2 != 0 {
+		dataSize++
+	}
+	pcm := make([]byte, dataSize) // all zeros is silence in standard PCM format
+	header := CreateWAVHeader(params, dataSize)
+	
+	result := make([]byte, len(header)+len(pcm))
+	copy(result[0:], header)
+	copy(result[len(header):], pcm)
+	return result
+}

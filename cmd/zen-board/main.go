@@ -76,6 +76,7 @@ func Run() error {
 	height := fs.Int("h", conf.Height, "Canvas height")
 	ttsAddr := fs.String("tts", conf.TTSAddr, "zen-tts server address")
 	speed := fs.Float64("speed", conf.Speed, "TTS speed multiplier")
+	voice := fs.String("voice", conf.Voice, "TTS voice ID")
 	preview := fs.Bool("preview", false, "Preview render in real-time via ffplay")
 	
 	if err := fs.Parse(os.Args[1:]); err != nil {
@@ -91,6 +92,7 @@ func Run() error {
 	conf.Height = *height
 	conf.TTSAddr = *ttsAddr
 	conf.Speed = *speed
+	conf.Voice = *voice
 
 	if conf.ScriptPath == "" {
 		return fmt.Errorf("-script is required")
@@ -145,16 +147,36 @@ func Run() error {
 			semTTS <- struct{}{}
 			defer func() { <-semTTS }()
 
-			chunk, err := client.Synthesize(j.text, *speed)
+			chunk, err := client.Synthesize(j.text, *speed, conf.Voice)
 			results[j.index] = &synthResult{chunk: chunk, err: err}
 		}(job)
 	}
 	wg.Wait()
 
-	// Check for synthesis errors
+	// Check for synthesis errors and extract WAV parameters if available
+	var wavParams tts.WAVParams
+	var gotParams bool
 	for i, res := range results {
-		if res != nil && res.err != nil {
-			return fmt.Errorf("TTS Error on line %d: %w", i+1, res.err)
+		if res != nil {
+			if res.err != nil {
+				return fmt.Errorf("TTS Error on line %d: %w", i+1, res.err)
+			}
+			if len(res.chunk) > 0 && !gotParams {
+				params, err := tts.ParseWAVParams(res.chunk)
+				if err == nil {
+					wavParams = params
+					gotParams = true
+				}
+			}
+		}
+	}
+
+	// Default fallback WAV parameters if no TTS is synthesized in the script
+	if !gotParams {
+		wavParams = tts.WAVParams{
+			Channels:      1,
+			SampleRate:    24000,
+			BitsPerSample: 16,
 		}
 	}
 
@@ -169,6 +191,9 @@ func Run() error {
 				}
 			}
 			if waitDuration > 0 {
+				silentChunk := tts.CreateSilentWAV(wavParams, waitDuration)
+				audioChunks = append(audioChunks, silentChunk)
+
 				pLines = append(pLines, processedLine{
 					startTime: currentTime,
 					duration:  waitDuration,
@@ -330,7 +355,12 @@ func Run() error {
 	defer os.Remove(subsTmp)
 
 	// 5. Rendering Engine
-	engine, err := render.NewEngine(conf.Width, conf.Height, conf.FPS, *handPath, conf.HandTipX, conf.HandTipY)
+	tipX, tipY := conf.HandTipX, conf.HandTipY
+	if tipX == 30 && tipY == 20 {
+		tipX = 219
+		tipY = 130
+	}
+	engine, err := render.NewEngine(conf.Width, conf.Height, conf.FPS, *handPath, tipX, tipY)
 	if err != nil {
 		return fmt.Errorf("engine: %w", err)
 	}

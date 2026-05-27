@@ -21,10 +21,11 @@ func NewClient(addr string) *TTSClient {
 type ttsRequest struct {
 	Text  string  `json:"text"`
 	Speed float64 `json:"speed"`
+	Voice string  `json:"voice,omitempty"`
 }
 
-func (c *TTSClient) Synthesize(text string, speed float64) ([]byte, error) {
-	reqBody, err := json.Marshal(ttsRequest{Text: text, Speed: speed})
+func (c *TTSClient) Synthesize(text string, speed float64, voice string) ([]byte, error) {
+	reqBody, err := json.Marshal(ttsRequest{Text: text, Speed: speed, Voice: voice})
 	if err != nil {
 		return nil, fmt.Errorf("marshal error: %w", err)
 	}

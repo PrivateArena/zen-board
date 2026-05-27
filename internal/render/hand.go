@@ -6,6 +6,7 @@ import (
 	"math"
 	"os"
 
+	_ "image/jpeg"
 	_ "image/png"
 )
 
@@ -27,7 +28,9 @@ func NewHandRenderer(path string) (*HandRenderer, error) {
 		return nil, err
 	}
 
-	return &HandRenderer{Sprite: img}, nil
+	scaledImg := scaleImage(img, 256, 256)
+
+	return &HandRenderer{Sprite: scaledImg}, nil
 }
 
 func (h *HandRenderer) Draw(dst draw.Image, x, y int, frame int) {
