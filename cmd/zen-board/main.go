@@ -131,8 +131,10 @@ func Run() error {
 	}
 
 	type synthResult struct {
-		chunk []byte
-		err   error
+		chunk    []byte
+		timings  []model.WordTiming // nil if server returned no timings
+		duration float64            // exact duration from WAV; 0 if chunk is nil
+		err      error
 	}
 	results := make([]*synthResult, len(lines))
 
@@ -147,8 +149,16 @@ func Run() error {
 			semTTS <- struct{}{}
 			defer func() { <-semTTS }()
 
-			chunk, err := client.Synthesize(j.text, *speed, conf.Voice)
-			results[j.index] = &synthResult{chunk: chunk, err: err}
+			res, err := client.SynthesizeWithTimings(j.text, *speed, conf.Voice)
+			if err != nil {
+				results[j.index] = &synthResult{err: err}
+				return
+			}
+			results[j.index] = &synthResult{
+				chunk:    res.Audio,
+				timings:  res.Timings,
+				duration: res.Duration,
+			}
 		}(job)
 	}
 	wg.Wait()
@@ -211,12 +221,30 @@ func Run() error {
 		chunk := res.chunk
 		audioChunks = append(audioChunks, chunk)
 
-		duration, err := tts.GetWAVDuration(chunk)
-		if err != nil {
-			return fmt.Errorf("WAV duration error for line %d: %w", i+1, err)
+		// Use exact WAV duration; fall back to pre-computed duration from SynthesizeWithTimings
+		duration := res.duration
+		if wavDur, err := tts.GetWAVDuration(chunk); err == nil {
+			duration = wavDur
 		}
+		if duration == 0 {
+			return fmt.Errorf("zero duration for line %d", i+1)
+		}
+
 		wordOffset := len(allWordTimings)
-		wordTimings := tts.EstimateWordTimings(line.Text, duration, currentTime)
+		var wordTimings []model.WordTiming
+		if res.timings != nil {
+			// Ground-truth timings from PCM analysis: shift from segment-relative to absolute
+			for _, t := range res.timings {
+				wordTimings = append(wordTimings, model.WordTiming{
+					Word:  t.Word,
+					Start: t.Start + currentTime,
+					End:   t.End + currentTime,
+				})
+			}
+		} else {
+			// Fallback: syllable-heuristic estimate
+			wordTimings = tts.EstimateWordTimings(line.Text, duration, currentTime)
+		}
 		allWordTimings = append(allWordTimings, wordTimings...)
 
 		pLines = append(pLines, processedLine{
@@ -234,6 +262,13 @@ func Run() error {
 		return fmt.Errorf("WAV Concat Error: %w", err)
 	}
 
+	// Derive authoritative duration from the actual concatenated WAV, not estimated currentTime
+	exactDuration, err := tts.GetWAVDuration(finalAudio)
+	if err != nil {
+		log.Printf("Warning: could not get exact WAV duration, using estimate: %v", err)
+		exactDuration = currentTime
+	}
+
 	af, err := os.CreateTemp("", "zen-audio-*.wav")
 	if err != nil {
 		return fmt.Errorf("temp audio: %w", err)
@@ -247,7 +282,7 @@ func Run() error {
 	timeline := &model.Timeline{
 		Words:     allWordTimings,
 		AudioPath: audioTmp,
-		Duration:  currentTime,
+		Duration:  exactDuration,
 	}
 
 	gridIndex := 0
@@ -381,9 +416,9 @@ func Run() error {
 	// 6. Pipe (FFmpeg or ffplay)
 	var pipe *ffmpeg.Pipe
 	if *preview {
-		pipe, err = ffmpeg.NewPreviewPipe(conf.Width, conf.Height, conf.FPS, audioTmp)
+		pipe, err = ffmpeg.NewPreviewPipe(conf.Width, conf.Height, conf.FPS, audioTmp, exactDuration)
 	} else {
-		pipe, err = ffmpeg.NewPipe(conf.OutputPath, audioTmp, subsTmp, conf.Width, conf.Height, conf.FPS)
+		pipe, err = ffmpeg.NewPipe(conf.OutputPath, audioTmp, subsTmp, conf.Width, conf.Height, conf.FPS, exactDuration)
 	}
 	if err != nil {
 		return fmt.Errorf("pipe: %w", err)

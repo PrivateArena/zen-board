@@ -13,7 +13,7 @@ type Pipe struct {
 	extraCmd *exec.Cmd
 }
 
-func NewPipe(outputPath, audioPath, assPath string, width, height, fps int) (*Pipe, error) {
+func NewPipe(outputPath, audioPath, assPath string, width, height, fps int, duration float64) (*Pipe, error) {
 	args := []string{
 		"-y",
 		"-f", "rawvideo",
@@ -29,7 +29,8 @@ func NewPipe(outputPath, audioPath, assPath string, width, height, fps int) (*Pi
 		"-pix_fmt", "yuv420p",
 		"-c:a", "aac",
 		"-b:a", "192k",
-		"-shortest",
+		// Use exact duration instead of -shortest to guarantee A/V length match
+		"-t", fmt.Sprintf("%.6f", duration),
 		outputPath,
 	}
 
@@ -64,7 +65,7 @@ func (p *Pipe) Close() error {
 	return err
 }
 
-func NewPreviewPipe(width, height, fps int, audioPath string) (*Pipe, error) {
+func NewPreviewPipe(width, height, fps int, audioPath string, duration float64) (*Pipe, error) {
 	args := []string{
 		"-y",
 		"-f", "rawvideo",
@@ -85,6 +86,9 @@ func NewPreviewPipe(width, height, fps int, audioPath string) (*Pipe, error) {
 	)
 	if audioPath != "" {
 		args = append(args, "-c:a", "aac", "-b:a", "192k")
+	}
+	if duration > 0 {
+		args = append(args, "-t", fmt.Sprintf("%.6f", duration))
 	}
 	args = append(args, "-f", "nut", "pipe:1")
 
