@@ -17,7 +17,15 @@ func GenerateASS(timings []model.WordTiming, width, height int) string {
 
 	b.WriteString("[V4+ Styles]\n")
 	b.WriteString("Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\n")
-	b.WriteString("Style: Default,Arial,60,&H00FFFFFF,&H000000FF,&H00000000,&H64000000,0,0,0,0,100,100,0,0,1,3,2,2,10,10,50,1\n\n")
+	fontSize := height / 18
+	if fontSize < 12 {
+		fontSize = 12
+	}
+	marginV := height / 20
+	if marginV < 5 {
+		marginV = 5
+	}
+	b.WriteString(fmt.Sprintf("Style: Default,Arial,%d,&H00FFFFFF,&H000000FF,&H00000000,&H64000000,0,0,0,0,100,100,0,0,1,3,2,2,10,10,%d,1\n\n", fontSize, marginV))
 
 	b.WriteString("[Events]\n")
 	b.WriteString("Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n")

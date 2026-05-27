@@ -1,6 +1,7 @@
 package render
 
 import (
+	"fmt"
 	"image"
 	"image/draw"
 	"os"
@@ -14,6 +15,7 @@ type Engine struct {
 	Pool          *RenderPool
 	Hand          *HandRenderer
 	Assets        map[string]image.Image
+	ScaledAssets  map[string]image.Image
 	AssetMu       sync.RWMutex
 }
 
@@ -26,12 +28,13 @@ func NewEngine(w, h, fps int, handPath string, tipX, tipY int) (*Engine, error) 
 	hr.TipY = tipY
 
 	return &Engine{
-		Width:  w,
-		Height: h,
-		FPS:    fps,
-		Pool:   NewRenderPool(w, h),
-		Hand:   hr,
-		Assets: make(map[string]image.Image),
+		Width:        w,
+		Height:       h,
+		FPS:          fps,
+		Pool:         NewRenderPool(w, h),
+		Hand:         hr,
+		Assets:       make(map[string]image.Image),
+		ScaledAssets: make(map[string]image.Image),
 	}, nil
 }
 
@@ -92,6 +95,24 @@ func (e *Engine) RenderFrame(frameNum int, events []model.FrameEvent) *image.RGB
 			continue
 		}
 
+		if ev.Width > 0 && ev.Height > 0 {
+			key := fmt.Sprintf("%s_%d_%d", ev.TargetImage, ev.Width, ev.Height)
+			e.AssetMu.RLock()
+			scaledImg, ok := e.ScaledAssets[key]
+			e.AssetMu.RUnlock()
+
+			if ok {
+				img = scaledImg
+			} else {
+				// Scale and cache
+				scaledImg = scaleImage(img, ev.Width, ev.Height)
+				e.AssetMu.Lock()
+				e.ScaledAssets[key] = scaledImg
+				e.AssetMu.Unlock()
+				img = scaledImg
+			}
+		}
+
 		progress := float64(frameNum-ev.StartFrame) / float64(ev.EndFrame-ev.StartFrame)
 		if progress > 1.0 {
 			progress = 1.0
@@ -119,4 +140,25 @@ func (e *Engine) RenderFrame(frameNum int, events []model.FrameEvent) *image.RGB
 	}
 
 	return buf
+}
+
+func scaleImage(src image.Image, w, h int) image.Image {
+	if w <= 0 || h <= 0 {
+		return src
+	}
+	bounds := src.Bounds()
+	srcW := bounds.Dx()
+	srcH := bounds.Dy()
+	if srcW == w && srcH == h {
+		return src
+	}
+	dst := image.NewRGBA(image.Rect(0, 0, w, h))
+	for y := 0; y < h; y++ {
+		srcY := bounds.Min.Y + (y * srcH / h)
+		for x := 0; x < w; x++ {
+			srcX := bounds.Min.X + (x * srcW / w)
+			dst.Set(x, y, src.At(srcX, srcY))
+		}
+	}
+	return dst
 }

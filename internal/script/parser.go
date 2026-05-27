@@ -8,8 +8,9 @@ import (
 )
 
 var (
-	drawRegex = regexp.MustCompile(`\[draw:([^\]@]+)(?:@([\d,]+))?\]`)
-	waitRegex = regexp.MustCompile(`\[wait:([\d.]+)\]`)
+	drawRegex  = regexp.MustCompile(`\[draw:([^\]@]+)(?:@([\d,]+))?\]`)
+	waitRegex  = regexp.MustCompile(`\[wait:([\d.]+)\]`)
+	clearRegex = regexp.MustCompile(`\[clear\]`)
 )
 
 func Parse(input string) []model.ScriptLine {
@@ -76,6 +77,11 @@ func extractActions(line string) (string, []model.DrawAction) {
 	for _, m := range waitMatches {
 		val, _ := strconv.ParseFloat(line[m[2]:m[3]], 64)
 		tags = append(tags, tagInfo{start: m[0], end: m[1], isWait: true, waitVal: val})
+	}
+	
+	clearMatches := clearRegex.FindAllStringSubmatchIndex(line, -1)
+	for _, m := range clearMatches {
+		tags = append(tags, tagInfo{start: m[0], end: m[1], tag: "clear"})
 	}
 	
 	// Sort tags by start position

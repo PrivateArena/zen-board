@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"zen-board/internal/ffmpeg"
 	"zen-board/internal/model"
 	"zen-board/internal/render"
@@ -24,7 +25,7 @@ func getBinaryDir() string {
 		return dir
 	}
 	dir := filepath.Dir(exe)
-	if strings.Contains(exe, "go-build") || strings.Contains(exe, os.TempDir()) {
+	if strings.Contains(exe, "go-build") || strings.HasPrefix(filepath.ToSlash(exe), filepath.ToSlash(os.TempDir())) {
 		dir, _ = os.Getwd()
 	}
 	return dir
@@ -116,8 +117,48 @@ func Run() error {
 	}
 	var pLines []processedLine
 
-	fmt.Println("Synthesizing TTS...")
-	for _, line := range lines {
+	type synthJob struct {
+		index int
+		text  string
+	}
+	var jobs []synthJob
+	for i, line := range lines {
+		if line.Text != "" {
+			jobs = append(jobs, synthJob{index: i, text: line.Text})
+		}
+	}
+
+	type synthResult struct {
+		chunk []byte
+		err   error
+	}
+	results := make([]*synthResult, len(lines))
+
+	var wg sync.WaitGroup
+	semTTS := make(chan struct{}, 5)
+
+	fmt.Println("Synthesizing TTS in parallel...")
+	for _, job := range jobs {
+		wg.Add(1)
+		go func(j synthJob) {
+			defer wg.Done()
+			semTTS <- struct{}{}
+			defer func() { <-semTTS }()
+
+			chunk, err := client.Synthesize(j.text, *speed)
+			results[j.index] = &synthResult{chunk: chunk, err: err}
+		}(job)
+	}
+	wg.Wait()
+
+	// Check for synthesis errors
+	for i, res := range results {
+		if res != nil && res.err != nil {
+			return fmt.Errorf("TTS Error on line %d: %w", i+1, res.err)
+		}
+	}
+
+	for i, line := range lines {
 		if line.Text == "" {
 			waitDuration := 0.0
 			for _, action := range line.Actions {
@@ -131,19 +172,24 @@ func Run() error {
 				pLines = append(pLines, processedLine{
 					startTime: currentTime,
 					duration:  waitDuration,
+					actions:   line.Actions,
 				})
 				currentTime += waitDuration
 			}
 			continue
 		}
 
-		chunk, err := client.Synthesize(line.Text, *speed)
-		if err != nil {
-			return fmt.Errorf("TTS Error: %w", err)
+		res := results[i]
+		if res == nil || len(res.chunk) == 0 {
+			return fmt.Errorf("missing synthesized audio for line %d", i+1)
 		}
+		chunk := res.chunk
 		audioChunks = append(audioChunks, chunk)
 
-		duration, _ := tts.GetWAVDuration(chunk)
+		duration, err := tts.GetWAVDuration(chunk)
+		if err != nil {
+			return fmt.Errorf("WAV duration error for line %d: %w", i+1, err)
+		}
 		wordOffset := len(allWordTimings)
 		wordTimings := tts.EstimateWordTimings(line.Text, duration, currentTime)
 		allWordTimings = append(allWordTimings, wordTimings...)
@@ -179,6 +225,12 @@ func Run() error {
 		Duration:  currentTime,
 	}
 
+	gridIndex := 0
+	marginX := int(float64(conf.Width) * 0.05)
+	marginY := int(float64(conf.Height) * 0.05)
+	colWidth := (conf.Width - 2*marginX) / 3
+	rowHeight := (conf.Height - 2*marginY) / 2
+
 	for _, pl := range pLines {
 		for _, action := range pl.actions {
 			if strings.HasPrefix(action.Tag, "WAIT:") {
@@ -201,9 +253,36 @@ func Run() error {
 			revealDuration := 2.0
 			endFrame := startFrame + int(revealDuration*float64(conf.FPS))
 
+			if action.Tag == "clear" {
+				clearFrame := startFrame
+				for i := range timeline.Events {
+					if timeline.Events[i].EndFrame > clearFrame {
+						timeline.Events[i].EndFrame = clearFrame
+					}
+				}
+				gridIndex = 0 // Reset grid index on clear
+				continue
+			}
+
 			x, y := action.X, action.Y
+			w, h := action.W, action.H
+
 			if x == 0 && y == 0 {
-				x, y = 100, 100
+				// Auto-position in a 3-column, 2-row grid
+				col := gridIndex % 3
+				row := (gridIndex / 3) % 2
+				cellX := marginX + col*colWidth
+				cellY := marginY + row*rowHeight
+
+				if w == 0 && h == 0 {
+					w = int(float64(colWidth) * 0.8)
+					h = int(float64(rowHeight) * 0.8)
+				}
+
+				// Center scaled image in cell
+				x = cellX + (colWidth-w)/2
+				y = cellY + (rowHeight-h)/2
+				gridIndex++
 			}
 
 			timeline.Events = append(timeline.Events, model.FrameEvent{
@@ -212,10 +291,31 @@ func Run() error {
 				EndFrame:    endFrame,
 				X:           x,
 				Y:           y,
-				Width:       action.W,
-				Height:      action.H,
+				Width:       w,
+				Height:      h,
 			})
 		}
+	}
+
+	// Validate Assets exist upfront
+	var missingAssets []string
+	seenAssets := make(map[string]bool)
+	for _, ev := range timeline.Events {
+		if ev.TargetImage == "clear" {
+			continue
+		}
+		if seenAssets[ev.TargetImage] {
+			continue
+		}
+		seenAssets[ev.TargetImage] = true
+		assetPath := filepath.Join(conf.AssetsDir, ev.TargetImage+".png")
+		if _, err := os.Stat(assetPath); os.IsNotExist(err) {
+			missingAssets = append(missingAssets, ev.TargetImage)
+		}
+	}
+
+	if len(missingAssets) > 0 {
+		return fmt.Errorf("missing asset files in %s: %s (please make sure they exist as .png files)", conf.AssetsDir, strings.Join(missingAssets, ", "))
 	}
 
 	// 4. Subtitles
@@ -238,6 +338,9 @@ func Run() error {
 	// Load Assets
 	fmt.Println("Loading assets...")
 	for _, ev := range timeline.Events {
+		if ev.TargetImage == "clear" {
+			continue
+		}
 		assetPath := filepath.Join(conf.AssetsDir, ev.TargetImage+".png")
 		err := engine.LoadAsset(ev.TargetImage, assetPath)
 		if err != nil {
@@ -248,7 +351,7 @@ func Run() error {
 	// 6. Pipe (FFmpeg or ffplay)
 	var pipe *ffmpeg.Pipe
 	if *preview {
-		pipe, err = ffmpeg.NewPreviewPipe(conf.Width, conf.Height, conf.FPS)
+		pipe, err = ffmpeg.NewPreviewPipe(conf.Width, conf.Height, conf.FPS, audioTmp)
 	} else {
 		pipe, err = ffmpeg.NewPipe(conf.OutputPath, audioTmp, subsTmp, conf.Width, conf.Height, conf.FPS)
 	}
@@ -259,9 +362,13 @@ func Run() error {
 	engine.StartWorkers()
 	totalFrames := int(timeline.Duration * float64(conf.FPS))
 
+	// Limit to at most 120 frames in-flight (uncompressed RGBA in memory)
+	sem := make(chan struct{}, 120)
+
 	// Feed jobs in a goroutine
 	go func() {
 		for f := 0; f < totalFrames; f++ {
+			sem <- struct{}{}
 			engine.Pool.Jobs <- render.FrameJob{
 				Index:  f,
 				Events: timeline.Events,
@@ -295,6 +402,7 @@ func Run() error {
 			// Clean up and return to pool
 			delete(resultsMap, nextFrame)
 			engine.Pool.BufferPool.Put(frame)
+			<-sem // Release in-flight frame slot
 
 			if nextFrame%30 == 0 {
 				fmt.Printf("\rProgress: %d/%d (%.1f%%)", nextFrame, totalFrames, float64(nextFrame)*100/float64(totalFrames))

@@ -52,19 +52,13 @@ func ConcatenateWAVs(chunks [][]byte) ([]byte, error) {
 		return chunks[0], nil
 	}
 
-	var totalDataSize uint32
-	var header []byte
-
-	// Use first 44 bytes as template, but we will update sizes later.
-	// We assume standard 44-byte header for the output, but inputs can be different.
-	if len(chunks[0]) < 44 {
-		return nil, fmt.Errorf("WAV chunk too small")
+	params, err := ParseWAVParams(chunks[0])
+	if err != nil {
+		return nil, fmt.Errorf("parsing WAV params of first chunk: %w", err)
 	}
-	header = make([]byte, 44)
-	copy(header, chunks[0][:44])
 
-	var result bytes.Buffer
-	result.Write(header)
+	var pcmData bytes.Buffer
+	var totalDataSize uint32
 
 	for _, chunk := range chunks {
 		// Find data chunk
@@ -74,7 +68,7 @@ func ConcatenateWAVs(chunks [][]byte) ([]byte, error) {
 			chunkID := string(chunk[pos : pos+4])
 			chunkSize := binary.LittleEndian.Uint32(chunk[pos+4 : pos+8])
 			if chunkID == "data" {
-				result.Write(chunk[pos+8 : pos+8+int(chunkSize)])
+				pcmData.Write(chunk[pos+8 : pos+8+int(chunkSize)])
 				totalDataSize += chunkSize
 				found = true
 				break
@@ -89,13 +83,13 @@ func ConcatenateWAVs(chunks [][]byte) ([]byte, error) {
 		}
 	}
 
-	final := result.Bytes()
-	// Update RIFF chunk size (total file size - 8)
-	binary.LittleEndian.PutUint32(final[4:8], 36+totalDataSize)
-	// Update data chunk size
-	binary.LittleEndian.PutUint32(final[40:44], totalDataSize)
+	header := CreateWAVHeader(params, totalDataSize)
 
-	return final, nil
+	var result bytes.Buffer
+	result.Write(header)
+	result.Write(pcmData.Bytes())
+
+	return result.Bytes(), nil
 }
 
 func SaveWAV(path string, data []byte) error {
