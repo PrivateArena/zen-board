@@ -1,17 +1,18 @@
 package model
 
 type Project struct {
-	ScriptPath string  `json:"script_path"`
-	AssetsDir  string  `json:"assets_dir"`
-	OutputPath string  `json:"output_path"`
-	FPS        int     `json:"fps"`
-	Width      int     `json:"width"`
-	Height     int     `json:"height"`
-	TTSAddr    string  `json:"tts_addr"`
-	Speed      float64 `json:"speed"`
-	HandTipX   int     `json:"hand_tip_x"`
-	HandTipY   int     `json:"hand_tip_y"`
-	Voice      string  `json:"voice"`
+	ScriptPath        string  `json:"script_path"`
+	AssetsDir         string  `json:"assets_dir"`
+	OutputPath        string  `json:"output_path"`
+	FPS               int     `json:"fps"`
+	Width             int     `json:"width"`
+	Height            int     `json:"height"`
+	TTSAddr           string  `json:"tts_addr"`
+	Speed             float64 `json:"speed"`
+	HandTipX          int     `json:"hand_tip_x"`
+	HandTipY          int     `json:"hand_tip_y"`
+	Voice             string  `json:"voice"`
+	DisableTranscript bool    `json:"disable_transcript"`
 }
 
 func NewDefaultProject() *Project {

@@ -78,6 +78,7 @@ func Run() error {
 	speed := fs.Float64("speed", conf.Speed, "TTS speed multiplier")
 	voice := fs.String("voice", conf.Voice, "TTS voice ID")
 	preview := fs.Bool("preview", false, "Preview render in real-time via ffplay")
+	disableTranscript := fs.Bool("disable-transcript", conf.DisableTranscript, "Disable transcript/subtitle rendering")
 	
 	if err := fs.Parse(os.Args[1:]); err != nil {
 		return err
@@ -93,6 +94,7 @@ func Run() error {
 	conf.TTSAddr = *ttsAddr
 	conf.Speed = *speed
 	conf.Voice = *voice
+	conf.DisableTranscript = *disableTranscript
 
 	if conf.ScriptPath == "" {
 		return fmt.Errorf("-script is required")
@@ -379,15 +381,18 @@ func Run() error {
 	}
 
 	// 4. Subtitles
-	assData := subtitle.GenerateASS(timeline.Words, conf.Width, conf.Height)
-	sf, err := os.CreateTemp("", "zen-subs-*.ass")
-	if err != nil {
-		return fmt.Errorf("temp subs: %w", err)
+	var subsTmp string
+	if !conf.DisableTranscript {
+		assData := subtitle.GenerateASS(timeline.Words, conf.Width, conf.Height)
+		sf, err := os.CreateTemp("", "zen-subs-*.ass")
+		if err != nil {
+			return fmt.Errorf("temp subs: %w", err)
+		}
+		sf.Write([]byte(assData))
+		sf.Close()
+		subsTmp = sf.Name()
+		defer os.Remove(subsTmp)
 	}
-	sf.Write([]byte(assData))
-	sf.Close()
-	subsTmp := sf.Name()
-	defer os.Remove(subsTmp)
 
 	// 5. Rendering Engine
 	tipX, tipY := conf.HandTipX, conf.HandTipY

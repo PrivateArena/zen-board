@@ -22,7 +22,13 @@ func NewPipe(outputPath, audioPath, assPath string, width, height, fps int, dura
 		"-framerate", fmt.Sprintf("%d", fps),
 		"-i", "pipe:0",
 		"-i", audioPath,
-		"-vf", fmt.Sprintf("ass=%s", assPath),
+	}
+
+	if assPath != "" {
+		args = append(args, "-vf", fmt.Sprintf("ass=%s", assPath))
+	}
+
+	args = append(args,
 		"-c:v", "libx264",
 		"-preset", "fast",
 		"-crf", "18",
@@ -32,7 +38,7 @@ func NewPipe(outputPath, audioPath, assPath string, width, height, fps int, dura
 		// Use exact duration instead of -shortest to guarantee A/V length match
 		"-t", fmt.Sprintf("%.6f", duration),
 		outputPath,
-	}
+	)
 
 	cmd := exec.Command("ffmpeg", args...)
 	cmd.Stderr = os.Stderr
