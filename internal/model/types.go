@@ -13,6 +13,9 @@ type Project struct {
 	HandTipY          int     `json:"hand_tip_y"`
 	Voice             string  `json:"voice"`
 	DisableTranscript bool    `json:"disable_transcript"`
+	BGMPath           string  `json:"bgm_path"`
+	BGMVolume         float64 `json:"bgm_volume"`
+	CameraEnabled     bool    `json:"camera_enabled"`
 }
 
 func NewDefaultProject() *Project {
@@ -27,6 +30,7 @@ func NewDefaultProject() *Project {
 		HandTipX:   30,
 		HandTipY:   20,
 		Voice:      "am_adam",
+		BGMVolume:  0.05,
 	}
 }
 

@@ -71,4 +71,24 @@ His son [draw:prince] took the throne. [wait:1.5][draw:robot]`
 			t.Errorf("Line 4 action 2 mismatch: %+v", lines[3].Actions[2])
 		}
 	}
+
+	// Test Line 5 (Zoom and Presets)
+	input2 := `Zoom in [zoom:TL] on pyramids [draw:pyramids:TL].`
+	lines2 := Parse(input2)
+	if len(lines2) != 1 {
+		t.Fatalf("Expected 1 line, got %d", len(lines2))
+	}
+	if lines2[0].Text != "Zoom in on pyramids ." {
+		t.Errorf("Line 5 text mismatch: %s", lines2[0].Text)
+	}
+	if len(lines2[0].Actions) != 2 {
+		t.Errorf("Expected 2 actions, got %d", len(lines2[0].Actions))
+	} else {
+		if lines2[0].Actions[0].Tag != "zoom:TL" || lines2[0].Actions[0].WordIndex != 2 {
+			t.Errorf("Expected zoom:TL action, got %+v", lines2[0].Actions[0])
+		}
+		if lines2[0].Actions[1].Tag != "pyramids:TL" || lines2[0].Actions[1].WordIndex != 4 {
+			t.Errorf("Expected pyramids:TL action, got %+v", lines2[0].Actions[1])
+		}
+	}
 }

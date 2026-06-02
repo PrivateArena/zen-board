@@ -1,6 +1,6 @@
 The history of the world [draw:world] is a story of constant change.
 [wait:1.0]
-From ancient civilizations [draw:pyramids] to the modern era [draw:city], humanity has always strived for progress.
+From ancient civilizations [zoom:TL][draw:pyramids:TL] to the modern era [zoom:TR][draw:city:TR], humanity has always strived for progress.
 [wait:2.0]
-And now, we are entering the age of AI [draw:robot].
-The future is here.
+And now [zoom:reset], we are entering [zoom:HB] the age of AI [draw:robot:HB].
+The future is here [zoom:reset].

@@ -13,7 +13,7 @@ type Pipe struct {
 	extraCmd *exec.Cmd
 }
 
-func NewPipe(outputPath, audioPath, assPath string, width, height, fps int, duration float64) (*Pipe, error) {
+func NewPipe(outputPath, audioPath, assPath, bgmPath string, bgmVolume float64, width, height, fps int, duration float64) (*Pipe, error) {
 	args := []string{
 		"-y",
 		"-f", "rawvideo",
@@ -24,8 +24,21 @@ func NewPipe(outputPath, audioPath, assPath string, width, height, fps int, dura
 		"-i", audioPath,
 	}
 
+	hasBGM := bgmPath != ""
+	if hasBGM {
+		args = append(args, "-stream_loop", "-1", "-i", bgmPath)
+	}
+
 	if assPath != "" {
 		args = append(args, "-vf", fmt.Sprintf("ass=%s", assPath))
+	}
+
+	if hasBGM {
+		args = append(args,
+			"-filter_complex", fmt.Sprintf("[2:a]volume=%.4f[bgm];[1:a][bgm]amix=inputs=2:duration=first:dropout_transition=0[audio_out]", bgmVolume),
+			"-map", "0:v",
+			"-map", "[audio_out]",
+		)
 	}
 
 	args = append(args,
@@ -71,7 +84,7 @@ func (p *Pipe) Close() error {
 	return err
 }
 
-func NewPreviewPipe(width, height, fps int, audioPath string, duration float64) (*Pipe, error) {
+func NewPreviewPipe(width, height, fps int, audioPath, bgmPath string, bgmVolume float64, duration float64) (*Pipe, error) {
 	args := []string{
 		"-y",
 		"-f", "rawvideo",
@@ -82,6 +95,22 @@ func NewPreviewPipe(width, height, fps int, audioPath string, duration float64) 
 	}
 	if audioPath != "" {
 		args = append(args, "-i", audioPath)
+	}
+
+	hasBGM := bgmPath != ""
+	if hasBGM {
+		args = append(args, "-stream_loop", "-1", "-i", bgmPath)
+	}
+
+	if hasBGM && audioPath != "" {
+		args = append(args,
+			"-filter_complex", fmt.Sprintf("[2:a]volume=%.4f[bgm];[1:a][bgm]amix=inputs=2:duration=first:dropout_transition=0[audio_out]", bgmVolume),
+			"-map", "0:v",
+			"-map", "[audio_out]",
+		)
+	} else if audioPath != "" {
+		// Just map voice audio if BGM not present
+		args = append(args, "-map", "0:v", "-map", "1:a")
 	}
 
 	args = append(args,

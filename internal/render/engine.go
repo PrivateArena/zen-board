@@ -45,7 +45,7 @@ func (e *Engine) StartWorkers() {
 	for i := 0; i < e.Pool.Workers; i++ {
 		go func() {
 			for job := range e.Pool.Jobs {
-				frame := e.RenderFrame(job.Index, job.Events)
+				frame := e.RenderFrame(job.Index, job.Events, job.Cam)
 				e.Pool.Results <- RenderResult{
 					Index: job.Index,
 					Frame: frame,
@@ -74,7 +74,7 @@ func (e *Engine) LoadAsset(name, path string) error {
 }
 
 // RenderFrame generates a single frame based on the active events.
-func (e *Engine) RenderFrame(frameNum int, events []model.FrameEvent) *image.RGBA {
+func (e *Engine) RenderFrame(frameNum int, events []model.FrameEvent, cam CameraState) *image.RGBA {
 	buf := e.Pool.BufferPool.Get().(*image.RGBA)
 	
 	// 1. Clear with white background
@@ -152,15 +152,19 @@ func (e *Engine) RenderFrame(frameNum int, events []model.FrameEvent) *image.RGB
 			progress = 1.0
 		}
 
-		// Generate mask for this specific image reveal
-		mask := GenerateMask(img.Bounds().Dx(), img.Bounds().Dy(), progress, maskCfg)
-		
-		// Draw masked image onto canvas
 		destRect := image.Rect(renderX, renderY, renderX+img.Bounds().Dx(), renderY+img.Bounds().Dy())
-		draw.DrawMask(buf, destRect, img, image.Point{}, mask, image.Point{}, draw.Over)
 
-		// Hand follows the LAST active reveal event
-		if progress < 1.0 {
+		if progress >= 1.0 {
+			// Optimization: Draw directly and avoid mask generation/allocation overhead for fully-revealed images
+			draw.Draw(buf, destRect, img, image.Point{}, draw.Over)
+		} else {
+			// Generate mask for this specific image reveal
+			mask := GenerateMask(img.Bounds().Dx(), img.Bounds().Dy(), progress, maskCfg)
+			
+			// Draw masked image onto canvas
+			draw.DrawMask(buf, destRect, img, image.Point{}, mask, image.Point{}, draw.Over)
+
+			// Hand follows the LAST active reveal event
 			fx, fy := GetFrontierPoint(img.Bounds().Dx(), img.Bounds().Dy(), progress, maskCfg)
 			activeHandX = renderX + fx
 			activeHandY = renderY + fy
@@ -173,7 +177,13 @@ func (e *Engine) RenderFrame(frameNum int, events []model.FrameEvent) *image.RGB
 		e.Hand.Draw(buf, activeHandX, activeHandY, frameNum)
 	}
 
-	return buf
+	// 4. Crop and Scale relative to CameraState
+	finalFrame := CropAndScale(buf, cam, e.Width, e.Height)
+	if finalFrame != buf {
+		e.Pool.BufferPool.Put(buf)
+	}
+
+	return finalFrame
 }
 
 func scaleImage(src image.Image, w, h int) image.Image {

@@ -10,6 +10,7 @@ import (
 type FrameJob struct {
 	Index  int
 	Events []model.FrameEvent
+	Cam    CameraState
 }
 
 type RenderResult struct {

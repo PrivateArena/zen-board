@@ -11,6 +11,7 @@ var (
 	drawRegex  = regexp.MustCompile(`\[draw:([^\]@]+)(?:@([\d,]+))?\]`)
 	waitRegex  = regexp.MustCompile(`\[wait:([\d.]+)\]`)
 	clearRegex = regexp.MustCompile(`\[clear\]`)
+	zoomRegex  = regexp.MustCompile(`\[zoom:([^\]]+)\]`)
 )
 
 func Parse(input string) []model.ScriptLine {
@@ -82,6 +83,12 @@ func extractActions(line string) (string, []model.DrawAction) {
 	clearMatches := clearRegex.FindAllStringSubmatchIndex(line, -1)
 	for _, m := range clearMatches {
 		tags = append(tags, tagInfo{start: m[0], end: m[1], tag: "clear"})
+	}
+	
+	zoomMatches := zoomRegex.FindAllStringSubmatchIndex(line, -1)
+	for _, m := range zoomMatches {
+		target := line[m[2]:m[3]]
+		tags = append(tags, tagInfo{start: m[0], end: m[1], tag: "zoom:" + target})
 	}
 	
 	// Sort tags by start position

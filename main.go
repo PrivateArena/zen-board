@@ -8,6 +8,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"zen-board/internal/ffmpeg"
@@ -79,6 +80,9 @@ func Run() error {
 	voice := fs.String("voice", conf.Voice, "TTS voice ID")
 	preview := fs.Bool("preview", false, "Preview render in real-time via ffplay")
 	disableTranscript := fs.Bool("disable-transcript", conf.DisableTranscript, "Disable transcript/subtitle rendering")
+	bgmPath := fs.String("bgm", conf.BGMPath, "Path to background music file")
+	bgmVolume := fs.Float64("bgm-vol", conf.BGMVolume, "Background music volume multiplier")
+	cameraEnabled := fs.Bool("camera", conf.CameraEnabled, "Enable camera zoom effects")
 	
 	if err := fs.Parse(os.Args[1:]); err != nil {
 		return err
@@ -95,6 +99,9 @@ func Run() error {
 	conf.Speed = *speed
 	conf.Voice = *voice
 	conf.DisableTranscript = *disableTranscript
+	conf.BGMPath = *bgmPath
+	conf.BGMVolume = *bgmVolume
+	conf.CameraEnabled = *cameraEnabled
 
 	if conf.ScriptPath == "" {
 		return fmt.Errorf("-script is required")
@@ -295,7 +302,7 @@ func Run() error {
 
 	for _, pl := range pLines {
 		for _, action := range pl.actions {
-			if strings.HasPrefix(action.Tag, "WAIT:") {
+			if strings.HasPrefix(action.Tag, "WAIT:") || strings.HasPrefix(action.Tag, "zoom:") {
 				continue
 			}
 
@@ -329,7 +336,22 @@ func Run() error {
 			x, y := action.X, action.Y
 			w, h := action.W, action.H
 
-			if x == 0 && y == 0 {
+			actionTag := action.Tag
+			preset := ""
+			if parts := strings.Split(actionTag, ":"); len(parts) > 1 {
+				actionTag = parts[0]
+				preset = parts[1]
+			}
+
+			if preset != "" && x == 0 && y == 0 && w == 0 && h == 0 {
+				px, py, pw, ph := getPresetLayout(preset, conf.Width, conf.Height)
+				padW := int(float64(pw) * 0.1)
+				padH := int(float64(ph) * 0.1)
+				w = pw - 2*padW
+				h = ph - 2*padH
+				x = px + padW
+				y = py + padH
+			} else if x == 0 && y == 0 {
 				// Auto-position in a 3-column, 2-row grid
 				col := gridIndex % 3
 				row := (gridIndex / 3) % 2
@@ -348,7 +370,7 @@ func Run() error {
 			}
 
 			timeline.Events = append(timeline.Events, model.FrameEvent{
-				TargetImage: action.Tag,
+				TargetImage: actionTag,
 				StartFrame:  startFrame,
 				EndFrame:    endFrame,
 				X:           x,
@@ -421,16 +443,81 @@ func Run() error {
 	// 6. Pipe (FFmpeg or ffplay)
 	var pipe *ffmpeg.Pipe
 	if *preview {
-		pipe, err = ffmpeg.NewPreviewPipe(conf.Width, conf.Height, conf.FPS, audioTmp, exactDuration)
+		pipe, err = ffmpeg.NewPreviewPipe(conf.Width, conf.Height, conf.FPS, audioTmp, conf.BGMPath, conf.BGMVolume, exactDuration)
 	} else {
-		pipe, err = ffmpeg.NewPipe(conf.OutputPath, audioTmp, subsTmp, conf.Width, conf.Height, conf.FPS, exactDuration)
+		pipe, err = ffmpeg.NewPipe(conf.OutputPath, audioTmp, subsTmp, conf.BGMPath, conf.BGMVolume, conf.Width, conf.Height, conf.FPS, exactDuration)
 	}
 	if err != nil {
 		return fmt.Errorf("pipe: %w", err)
 	}
 
-	engine.StartWorkers()
 	totalFrames := int(timeline.Duration * float64(conf.FPS))
+
+	// Generate Camera States
+	type zoomKeyframe struct {
+		frame  int
+		target string
+	}
+	var zoomKeyframes []zoomKeyframe
+	for _, pl := range pLines {
+		for _, action := range pl.actions {
+			if strings.HasPrefix(action.Tag, "zoom:") {
+				triggerTime := pl.startTime
+				if action.WordIndex > 0 {
+					triggerWordIdx := pl.wordOffset + action.WordIndex - 1
+					if triggerWordIdx >= 0 && triggerWordIdx < len(allWordTimings) {
+						triggerTime = allWordTimings[triggerWordIdx].Start
+					}
+				}
+				frame := int(triggerTime * float64(conf.FPS))
+				target := strings.TrimPrefix(action.Tag, "zoom:")
+				zoomKeyframes = append(zoomKeyframes, zoomKeyframe{
+					frame:  frame,
+					target: target,
+				})
+			}
+		}
+	}
+
+	sort.Slice(zoomKeyframes, func(i, j int) bool {
+		return zoomKeyframes[i].frame < zoomKeyframes[j].frame
+	})
+
+	cameraStates := make([]render.CameraState, totalFrames)
+	defaultCam := render.GetPresetViewport("reset", conf.Width, conf.Height)
+
+	if !*cameraEnabled {
+		for f := 0; f < totalFrames; f++ {
+			cameraStates[f] = defaultCam
+		}
+	} else {
+		currentCam := defaultCam
+		targetCam := defaultCam
+		startTransitionFrame := -1
+		transitionDuration := int(1.0 * float64(conf.FPS)) // 1 second transition
+		transitionStartCam := defaultCam
+		nextZoomIdx := 0
+
+		for f := 0; f < totalFrames; f++ {
+			if nextZoomIdx < len(zoomKeyframes) && f >= zoomKeyframes[nextZoomIdx].frame {
+				preset := zoomKeyframes[nextZoomIdx].target
+				targetCam = render.GetPresetViewport(preset, conf.Width, conf.Height)
+				transitionStartCam = currentCam
+				startTransitionFrame = f
+				nextZoomIdx++
+			}
+
+			if startTransitionFrame != -1 && f < startTransitionFrame+transitionDuration {
+				t := float64(f-startTransitionFrame) / float64(transitionDuration)
+				currentCam = render.LerpCamera(transitionStartCam, targetCam, t)
+			} else {
+				currentCam = targetCam
+			}
+			cameraStates[f] = currentCam
+		}
+	}
+
+	engine.StartWorkers()
 
 	// Limit to at most 120 frames in-flight (uncompressed RGBA in memory)
 	sem := make(chan struct{}, 120)
@@ -442,6 +529,7 @@ func Run() error {
 			engine.Pool.Jobs <- render.FrameJob{
 				Index:  f,
 				Events: timeline.Events,
+				Cam:    cameraStates[f],
 			}
 		}
 		close(engine.Pool.Jobs)
@@ -485,4 +573,29 @@ func Run() error {
 
 	fmt.Printf("Done! Video saved to %s\n", conf.OutputPath)
 	return nil
+}
+
+func getPresetLayout(preset string, canvasW, canvasH int) (x, y, w, h int) {
+	halfW := canvasW / 2
+	halfH := canvasH / 2
+	switch preset {
+	case "TL":
+		return 0, 0, halfW, halfH
+	case "TR":
+		return halfW, 0, halfW, halfH
+	case "BL":
+		return 0, halfH, halfW, halfH
+	case "BR":
+		return halfW, halfH, halfW, halfH
+	case "HT":
+		return 0, 0, canvasW, halfH
+	case "HB":
+		return 0, halfH, canvasW, halfH
+	case "LH":
+		return 0, 0, halfW, canvasH
+	case "RH":
+		return halfW, 0, halfW, canvasH
+	default:
+		return 0, 0, canvasW, canvasH
+	}
 }

@@ -6,6 +6,9 @@
   "assets_dir": "./assets",
   "output_path": "output.mp4",
   "speed": 1.0,
-  "voice": "am_adam",
-  "disable_transcript": true
+  "voice": "af_bella",
+  "disable_transcript": true,
+  "bgm_path": "music/mang_chung.wav",
+  "bgm_volume": 0.45,
+  "camera_enabled": true
 }
