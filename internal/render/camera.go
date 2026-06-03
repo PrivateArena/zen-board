@@ -2,8 +2,10 @@ package render
 
 import (
 	"image"
+	"image/color"
 	"math"
 )
+
 
 type CameraState struct {
 	X, Y, W, H float64
@@ -53,7 +55,7 @@ func CropAndScale(src *image.RGBA, cam CameraState, targetW, targetH int) *image
 	}
 
 	dst := image.NewRGBA(image.Rect(0, 0, targetW, targetH))
-	
+
 	srcW := float64(src.Bounds().Dx())
 	srcH := float64(src.Bounds().Dy())
 
@@ -62,23 +64,47 @@ func CropAndScale(src *image.RGBA, cam CameraState, targetW, targetH int) *image
 	cropW := math.Max(1, math.Min(cam.W, srcW-xMin))
 	cropH := math.Max(1, math.Min(cam.H, srcH-yMin))
 
+	maxX := src.Bounds().Max.X - 1
+	maxY := src.Bounds().Max.Y - 1
+
 	for y := 0; y < targetH; y++ {
-		srcY := yMin + (float64(y) * cropH / float64(targetH))
-		srcYInt := int(math.Floor(srcY))
-		if srcYInt >= src.Bounds().Max.Y {
-			srcYInt = src.Bounds().Max.Y - 1
+		fy := yMin + float64(y)*cropH/float64(targetH)
+		y0 := int(fy)
+		y1 := y0 + 1
+		if y1 > maxY {
+			y1 = maxY
 		}
+		yt := fy - float64(y0)
 
 		for x := 0; x < targetW; x++ {
-			srcX := xMin + (float64(x) * cropW / float64(targetW))
-			srcXInt := int(math.Floor(srcX))
-			if srcXInt >= src.Bounds().Max.X {
-				srcXInt = src.Bounds().Max.X - 1
+			fx := xMin + float64(x)*cropW/float64(targetW)
+			x0 := int(fx)
+			x1 := x0 + 1
+			if x1 > maxX {
+				x1 = maxX
 			}
+			xt := fx - float64(x0)
 
-			// Nearest-neighbor sampling
-			dst.Set(x, y, src.At(srcXInt, srcYInt))
+			// Bilinear: sample 4 neighbours and blend
+			c00 := src.RGBAAt(x0, y0)
+			c10 := src.RGBAAt(x1, y0)
+			c01 := src.RGBAAt(x0, y1)
+			c11 := src.RGBAAt(x1, y1)
+
+			r := (1-xt)*(1-yt)*float64(c00.R) + xt*(1-yt)*float64(c10.R) +
+				(1-xt)*yt*float64(c01.R) + xt*yt*float64(c11.R)
+			g := (1-xt)*(1-yt)*float64(c00.G) + xt*(1-yt)*float64(c10.G) +
+				(1-xt)*yt*float64(c01.G) + xt*yt*float64(c11.G)
+			b := (1-xt)*(1-yt)*float64(c00.B) + xt*(1-yt)*float64(c10.B) +
+				(1-xt)*yt*float64(c01.B) + xt*yt*float64(c11.B)
+			a := (1-xt)*(1-yt)*float64(c00.A) + xt*(1-yt)*float64(c10.A) +
+				(1-xt)*yt*float64(c01.A) + xt*yt*float64(c11.A)
+
+			dst.SetRGBA(x, y, color.RGBA{
+				R: uint8(r), G: uint8(g), B: uint8(b), A: uint8(a),
+			})
 		}
 	}
 	return dst
 }
+

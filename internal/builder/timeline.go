@@ -279,6 +279,14 @@ func CompileTimeline(conf *model.Project, allWordTimings []model.WordTiming, pLi
 						HandStyle:   "marker",
 					}
 					timeline.Events = append(timeline.Events, event)
+					// Persist text on screen after reveal animation
+					timeline.Events = append(timeline.Events, model.FrameEvent{
+						TargetImage: textAssetID,
+						StartFrame:  endFrame,
+						EndFrame:    999999,
+						X: tx, Y: ty, Width: tw, Height: th,
+						EventType:   "draw",
+					})
 				}
 				continue
 			}
@@ -441,6 +449,14 @@ func CompileTimeline(conf *model.Project, allWordTimings []model.WordTiming, pLi
 					HandStyle:   "pencil",
 				}
 				timeline.Events = append(timeline.Events, event)
+				// Persist generated image on screen after reveal
+				timeline.Events = append(timeline.Events, model.FrameEvent{
+					TargetImage: genAssetID,
+					StartFrame:  endFrame,
+					EndFrame:    999999,
+					X: tx, Y: ty, Width: tw, Height: th,
+					EventType:   "draw",
+				})
 				continue
 			}
 
@@ -482,6 +498,7 @@ func CompileTimeline(conf *model.Project, allWordTimings []model.WordTiming, pLi
 				gridIndex++
 			}
 
+			// Reveal animation event
 			timeline.Events = append(timeline.Events, model.FrameEvent{
 				TargetImage: actionTag,
 				StartFrame:  startFrame,
@@ -491,8 +508,19 @@ func CompileTimeline(conf *model.Project, allWordTimings []model.WordTiming, pLi
 				Width:       w,
 				Height:      h,
 				EventType:   "draw",
-				MaskStyle:   "ttb",
+				MaskStyle:   "diagonal",
 				HandStyle:   "pencil",
+			})
+			// Persistence event: image stays on screen after reveal
+			timeline.Events = append(timeline.Events, model.FrameEvent{
+				TargetImage: actionTag,
+				StartFrame:  endFrame,
+				EndFrame:    999999,
+				X:           x,
+				Y:           y,
+				Width:       w,
+				Height:      h,
+				EventType:   "draw",
 			})
 		}
 	}

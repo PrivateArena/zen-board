@@ -5,6 +5,7 @@ import (
 	"image"
 	"image/color"
 	"image/draw"
+	"math"
 	"os"
 	"strings"
 	"sync"
@@ -103,6 +104,7 @@ func (e *Engine) RenderFrame(frameNum int, events []model.FrameEvent, cam Camera
 	var activeHandX, activeHandY int
 	var handVisible bool
 	var activeHandStyle string = "default"
+	var activeHandAngle int = 0
 
 	maskCfg := DefaultMaskConfig()
 
@@ -193,21 +195,45 @@ func (e *Engine) RenderFrame(frameNum int, events []model.FrameEvent, cam Camera
 				progress = 1.0
 			}
 		}
+		// Smooth-step easing: slow start, fast middle, slow stop — matches human drawing rhythm.
+		easedProgress := progress * progress * (3 - 2*progress)
 
 		destRect := image.Rect(renderX, renderY, renderX+img.Bounds().Dx(), renderY+img.Bounds().Dy())
 
 		if ev.EventType == "move" {
-			progress := float64(frameNum-ev.StartFrame) / float64(ev.EndFrame-ev.StartFrame)
-			if progress > 1.0 {
-				progress = 1.0
+			rawT := float64(frameNum-ev.StartFrame) / float64(ev.EndFrame-ev.StartFrame)
+			if rawT > 1.0 {
+				rawT = 1.0
 			}
-			curX := ev.X + int(float64(ev.DestX-ev.X)*progress)
-			curY := ev.Y + int(float64(ev.DestY-ev.Y)*progress)
+			easedT := rawT * rawT * (3 - 2*rawT)
+			curX := ev.X + int(float64(ev.DestX-ev.X)*easedT)
+			curY := ev.Y + int(float64(ev.DestY-ev.Y)*easedT)
 			destRect = image.Rect(curX, curY, curX+renderW, curY+renderH)
 			draw.Draw(buf, destRect, img, image.Point{}, draw.Over)
 
-			activeHandX = curX + renderW/2
-			activeHandY = curY + renderH/2
+			dx := ev.DestX - ev.X
+			dy := ev.DestY - ev.Y
+			handOffX, handOffY := 0, 0
+			if dx > 0 {
+				handOffX = renderW / 3
+			} else if dx < 0 {
+				handOffX = -renderW / 3
+			}
+			if dy > 0 {
+				handOffY = renderH / 3
+			} else if dy < 0 {
+				handOffY = -renderH / 3
+			}
+			activeHandX = curX + renderW/2 + handOffX
+			activeHandY = curY + renderH/2 + handOffY
+			// Angle from movement direction (capped ±25°)
+			if dx != 0 || dy != 0 {
+				angRad := math.Atan2(float64(dy), float64(dx))
+				ang := int(angRad * 180 / math.Pi)
+				if ang > 25 { ang = 25 }
+				if ang < -25 { ang = -25 }
+				activeHandAngle = ang
+			}
 			handVisible = true
 			if ev.HandStyle != "" {
 				activeHandStyle = ev.HandStyle
@@ -218,24 +244,25 @@ func (e *Engine) RenderFrame(frameNum int, events []model.FrameEvent, cam Camera
 		}
 
 		if ev.EventType == "erase" {
-			if progress >= 1.0 {
+			if easedProgress >= 1.0 {
 				continue
 			}
-			mask := GenerateMask(img.Bounds().Dx(), img.Bounds().Dy(), progress, ev.MaskStyle, maskCfg)
+			mask := GenerateMask(img.Bounds().Dx(), img.Bounds().Dy(), easedProgress, ev.MaskStyle, maskCfg)
 			for i := range mask.Pix {
 				mask.Pix[i] = 255 - mask.Pix[i]
 			}
-			if progress >= 0.9 {
-				factor := (1.0 - progress) / 0.1
+			if easedProgress >= 0.9 {
+				factor := (1.0 - easedProgress) / 0.1
 				for i := range mask.Pix {
 					mask.Pix[i] = uint8(float64(mask.Pix[i]) * factor)
 				}
 			}
 			draw.DrawMask(buf, destRect, img, image.Point{}, mask, image.Point{}, draw.Over)
 
-			fx, fy := GetFrontierPoint(img.Bounds().Dx(), img.Bounds().Dy(), progress, ev.MaskStyle, maskCfg)
+			fx, fy := GetFrontierPoint(img.Bounds().Dx(), img.Bounds().Dy(), easedProgress, ev.MaskStyle, maskCfg)
 			activeHandX = renderX + fx
 			activeHandY = renderY + fy
+			activeHandAngle = 0
 			handVisible = true
 			if ev.HandStyle != "" {
 				activeHandStyle = ev.HandStyle
@@ -245,29 +272,31 @@ func (e *Engine) RenderFrame(frameNum int, events []model.FrameEvent, cam Camera
 			continue
 		}
 
-		if progress >= 1.0 {
-			// Optimization: Draw directly and avoid mask generation/allocation overhead for fully-revealed images
+		if easedProgress >= 1.0 {
 			draw.Draw(buf, destRect, img, image.Point{}, draw.Over)
 		} else {
-			// Generate mask for this specific image reveal
-			mask := GenerateMask(img.Bounds().Dx(), img.Bounds().Dy(), progress, ev.MaskStyle, maskCfg)
-
-			// Fade-in smoothing: as progress reaches 0.9-1.0, blend the mask opacity to full 255
-			if progress >= 0.9 {
-				factor := (progress - 0.9) / 0.1
+			mask := GenerateMask(img.Bounds().Dx(), img.Bounds().Dy(), easedProgress, ev.MaskStyle, maskCfg)
+			if easedProgress >= 0.9 {
+				factor := (easedProgress - 0.9) / 0.1
 				for i := range mask.Pix {
 					val := float64(mask.Pix[i])
 					mask.Pix[i] = uint8(val + (255.0-val)*factor)
 				}
 			}
-
-			// Draw masked image onto canvas
 			draw.DrawMask(buf, destRect, img, image.Point{}, mask, image.Point{}, draw.Over)
 
-			// Hand follows the LAST active reveal event
-			fx, fy := GetFrontierPoint(img.Bounds().Dx(), img.Bounds().Dy(), progress, ev.MaskStyle, maskCfg)
+			fx, fy := GetFrontierPoint(img.Bounds().Dx(), img.Bounds().Dy(), easedProgress, ev.MaskStyle, maskCfg)
 			activeHandX = renderX + fx
 			activeHandY = renderY + fy
+			// Angle by mask style: diagonal tilts 15°, ltr tilts -10°, ttb is flat
+			switch ev.MaskStyle {
+			case "diagonal":
+				activeHandAngle = 15
+			case "ltr":
+				activeHandAngle = -10
+			default:
+				activeHandAngle = 0
+			}
 			handVisible = true
 			if ev.HandStyle != "" {
 				activeHandStyle = ev.HandStyle
@@ -279,7 +308,7 @@ func (e *Engine) RenderFrame(frameNum int, events []model.FrameEvent, cam Camera
 
 	// 3. Draw Hand
 	if handVisible {
-		e.Hand.Draw(buf, activeHandX, activeHandY, frameNum, activeHandStyle)
+		e.Hand.Draw(buf, activeHandX, activeHandY, frameNum, activeHandStyle, activeHandAngle)
 	}
 
 	// 4. Crop and Scale relative to CameraState
