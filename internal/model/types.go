@@ -82,3 +82,11 @@ type Timeline struct {
 	AudioPath string
 	Duration  float64 // total seconds
 }
+
+type ProcessedLine struct {
+	StartTime  float64
+	Duration   float64
+	WordOffset int
+	Actions    []DrawAction
+}
+

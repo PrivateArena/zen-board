@@ -54,7 +54,7 @@ tui_state.json
 sfizz.log
 node_modules/
 *.log
-assets/
+/assets/
 *.png
 *.mp4
 *.jpg
