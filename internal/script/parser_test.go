@@ -92,3 +92,41 @@ His son [draw:prince] took the throne. [wait:1.5][draw:robot]`
 		}
 	}
 }
+
+func TestParseTriggerAfterWord(t *testing.T) {
+	input := `Hello [draw:robot] world [draw:robot+] again [wait:1.5]`
+	lines := Parse(input)
+
+	if len(lines) != 1 {
+		t.Fatalf("Expected 1 line, got %d", len(lines))
+	}
+
+	actions := lines[0].Actions
+	if len(actions) != 3 {
+		t.Fatalf("Expected 3 actions, got %d", len(actions))
+	}
+
+	// 1. robot (should have TriggerAfterWord: false)
+	if actions[0].Tag != "robot" {
+		t.Errorf("Expected tag 'robot', got '%s'", actions[0].Tag)
+	}
+	if actions[0].TriggerAfterWord {
+		t.Errorf("Expected TriggerAfterWord to be false for 'robot'")
+	}
+
+	// 2. robot+ (should strip '+' and have TriggerAfterWord: true)
+	if actions[1].Tag != "robot" {
+		t.Errorf("Expected tag 'robot' (trimmed), got '%s'", actions[1].Tag)
+	}
+	if !actions[1].TriggerAfterWord {
+		t.Errorf("Expected TriggerAfterWord to be true for 'robot+'")
+	}
+
+	// 3. WAIT (should have TriggerAfterWord: true)
+	if actions[2].Tag != "WAIT:1.5" {
+		t.Errorf("Expected tag 'WAIT:1.5', got '%s'", actions[2].Tag)
+	}
+	if !actions[2].TriggerAfterWord {
+		t.Errorf("Expected TriggerAfterWord to be true for WAIT")
+	}
+}

@@ -304,13 +304,14 @@ func invertImageColors(src image.Image) image.Image {
 	for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
 		for x := bounds.Min.X; x < bounds.Max.X; x++ {
 			c := src.At(x, y)
-			r, g, b, a := c.RGBA()
-			a8 := uint8(a >> 8)
-			if a8 > 0 {
-				r8 := uint8(r >> 8)
-				g8 := uint8(g >> 8)
-				b8 := uint8(b >> 8)
-				dst.Set(x, y, color.RGBA{255 - r8, 255 - g8, 255 - b8, a8})
+			nrgba := color.NRGBAModel.Convert(c).(color.NRGBA)
+			if nrgba.A > 0 {
+				dst.Set(x, y, color.NRGBA{
+					R: 255 - nrgba.R,
+					G: 255 - nrgba.G,
+					B: 255 - nrgba.B,
+					A: nrgba.A,
+				})
 			} else {
 				dst.Set(x, y, color.Alpha{0})
 			}

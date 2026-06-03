@@ -466,6 +466,9 @@ func Run() error {
 					textAssetID := fmt.Sprintf("__text_%d", textAssetCount)
 					textAssetCount++
 
+					// Note: Text style is captured at timeline-build time. 
+					// The text color (black/white) is baked into the texture at render-prep time 
+					// based on the style active when the [text] line is processed.
 					textJobs = append(textJobs, textRenderJob{
 						AssetID:    textAssetID,
 						Content:    content,
@@ -802,14 +805,9 @@ func Run() error {
 		fmt.Printf("Generating paint asset for prompt %q...\n", job.Prompt)
 		img, err := GeneratePaintAsset(job.Prompt)
 		if err != nil {
-			log.Printf("Warning: Paint generation failed for %q: %v. Using fallback.", job.Prompt, err)
-			fallbackPath := filepath.Join(conf.AssetsDir, "robot.png")
-			if f, err := os.Open(fallbackPath); err == nil {
-				if fallbackImg, _, err := image.Decode(f); err == nil {
-					engine.RegisterAsset(job.AssetID, fallbackImg)
-				}
-				f.Close()
-			}
+			log.Printf("Warning: Paint generation failed for %q: %v. Using transparent 1x1 placeholder.", job.Prompt, err)
+			placeholder := image.NewRGBA(image.Rect(0, 0, 1, 1))
+			engine.RegisterAsset(job.AssetID, placeholder)
 		} else {
 			engine.RegisterAsset(job.AssetID, img)
 		}
@@ -854,6 +852,13 @@ func Run() error {
 	}
 
 	totalFrames := int(timeline.Duration*float64(conf.FPS)) + conf.FreezeFrames
+
+	// Clamp all event EndFrame boundaries to totalFrames - 1 to handle sentinels safely
+	for i := range timeline.Events {
+		if timeline.Events[i].EndFrame >= totalFrames {
+			timeline.Events[i].EndFrame = totalFrames - 1
+		}
+	}
 
 	// Generate Camera States
 	type zoomKeyframe struct {
@@ -1062,6 +1067,9 @@ func splitLinesWithInlineWaits(lines []model.ScriptLine) []model.ScriptLine {
 				for _, act := range line.Actions {
 					if !strings.HasPrefix(act.Tag, "WAIT:") {
 						isMatch := false
+						// Note: WordIndex == 0 means triggering at line start, before any word.
+						// The >=0 vs >lastWordIdx asymmetry ensures that any action exactly at the
+						// boundary is included in the preceding segment rather than subsequent segments.
 						if lastWordIdx == 0 {
 							isMatch = (act.WordIndex >= 0 && act.WordIndex <= splitWordIdx)
 						} else {

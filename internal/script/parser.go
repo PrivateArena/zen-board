@@ -131,14 +131,20 @@ func extractActions(line string) (string, []model.DrawAction) {
 				TriggerAfterWord: wordCount > 0,
 			})
 		} else {
+			tag := t.tag
+			triggerAfter := false
+			if strings.HasSuffix(tag, "+") {
+				tag = strings.TrimSuffix(tag, "+")
+				triggerAfter = true
+			}
 			actions = append(actions, model.DrawAction{
-				Tag:              t.tag,
+				Tag:              tag,
 				WordIndex:        wordCount,
 				X:                t.x,
 				Y:                t.y,
 				W:                t.w,
 				H:                t.h,
-				TriggerAfterWord: wordCount > 0,
+				TriggerAfterWord: triggerAfter,
 			})
 		}
 		

@@ -6,6 +6,7 @@ import (
 	"os"
 
 	"golang.org/x/image/font"
+	"golang.org/x/image/font/gofont/goregular"
 	"golang.org/x/image/font/opentype"
 	"golang.org/x/image/math/fixed"
 )
@@ -40,12 +41,7 @@ func RenderText(text string, fontPreset string, size float64, isBold bool, fgCol
 
 	fontBytes, err := os.ReadFile(fontPath)
 	if err != nil {
-		// Fallback to regular sans if the bold or specific style is missing
-		fontPath = "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf"
-		fontBytes, err = os.ReadFile(fontPath)
-		if err != nil {
-			return nil, err
-		}
+		fontBytes = goregular.TTF
 	}
 
 	f, err := opentype.Parse(fontBytes)
