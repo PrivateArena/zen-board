@@ -8,10 +8,18 @@ import (
 )
 
 var (
-	drawRegex  = regexp.MustCompile(`\[draw:([^\]@]+)(?:@([\d,]+))?\]`)
-	waitRegex  = regexp.MustCompile(`\[wait:([\d.]+)\]`)
-	clearRegex = regexp.MustCompile(`\[clear\]`)
-	zoomRegex  = regexp.MustCompile(`\[zoom:([^\]]+)\]`)
+	drawRegex     = regexp.MustCompile(`\[draw:([^\]@]+)(?:@([\d,]+))?\]`)
+	textRegex     = regexp.MustCompile(`\[text:([^\]@]+)(?:@([\d,]+))?\]`)
+	eraseRegex    = regexp.MustCompile(`\[erase:([^\]@]+)(?:@([\d,]+))?\]`)
+	moveRegex     = regexp.MustCompile(`\[move:([^\]@]+)(?:@([\d,]+))?\]`)
+	genRegex      = regexp.MustCompile(`\[gen:([^\]@]+)(?:@([\d,]+))?\]`)
+	waitRegex     = regexp.MustCompile(`\[wait:([\d.]+)\]`)
+	clearRegex    = regexp.MustCompile(`\[clear\]`)
+	zoomRegex     = regexp.MustCompile(`\[zoom:([^\]]+)\]`)
+	styleRegex    = regexp.MustCompile(`\[style:([^\]]+)\]`)
+	chapterRegex  = regexp.MustCompile(`\[chapter:([^\]]+)\]`)
+	sfxRegex      = regexp.MustCompile(`\[sfx:([^\]]+)\]`)
+	subtitleRegex = regexp.MustCompile(`\[subtitle:([^\]]+)\]`)
 )
 
 func Parse(input string) []model.ScriptLine {
@@ -37,13 +45,6 @@ func Parse(input string) []model.ScriptLine {
 func extractActions(line string) (string, []model.DrawAction) {
 	var actions []model.DrawAction
 	
-	// We need to keep track of the text as we remove tags to know the word index
-	// A simple way is to replace tags with a placeholder, then split by words, 
-	// then find the index of the placeholder.
-	
-	// Find all tags (draw and wait - wait might be handled differently or as a special action)
-	// For now, let's focus on draw.
-	
 	type tagInfo struct {
 		start, end int
 		tag        string
@@ -56,23 +57,45 @@ func extractActions(line string) (string, []model.DrawAction) {
 	cleanBuilder := strings.Builder{}
 	lastPos := 0
 	
-	drawMatches := drawRegex.FindAllStringSubmatchIndex(line, -1)
-	for _, m := range drawMatches {
-		tag := line[m[2]:m[3]]
-		ti := tagInfo{start: m[0], end: m[1], tag: tag}
-		if m[4] != -1 && m[5] != -1 {
-			coords := strings.Split(line[m[4]:m[5]], ",")
-			if len(coords) >= 2 {
-				ti.x, _ = strconv.Atoi(coords[0])
-				ti.y, _ = strconv.Atoi(coords[1])
+	extractStandardTag := func(re *regexp.Regexp, prefix string) {
+		matches := re.FindAllStringSubmatchIndex(line, -1)
+		for _, m := range matches {
+			content := line[m[2]:m[3]]
+			ti := tagInfo{start: m[0], end: m[1], tag: prefix + content}
+			if len(m) >= 6 && m[4] != -1 && m[5] != -1 {
+				coords := strings.Split(line[m[4]:m[5]], ",")
+				if len(coords) >= 2 {
+					ti.x, _ = strconv.Atoi(coords[0])
+					ti.y, _ = strconv.Atoi(coords[1])
+				}
+				if len(coords) >= 4 {
+					ti.w, _ = strconv.Atoi(coords[2])
+					ti.h, _ = strconv.Atoi(coords[3])
+				}
 			}
-			if len(coords) >= 4 {
-				ti.w, _ = strconv.Atoi(coords[2])
-				ti.h, _ = strconv.Atoi(coords[3])
-			}
+			tags = append(tags, ti)
 		}
-		tags = append(tags, ti)
 	}
+
+	extractSimpleTag := func(re *regexp.Regexp, prefix string) {
+		matches := re.FindAllStringSubmatchIndex(line, -1)
+		for _, m := range matches {
+			content := line[m[2]:m[3]]
+			tags = append(tags, tagInfo{start: m[0], end: m[1], tag: prefix + content})
+		}
+	}
+
+	extractStandardTag(drawRegex, "")
+	extractStandardTag(textRegex, "text:")
+	extractStandardTag(eraseRegex, "erase:")
+	extractStandardTag(moveRegex, "move:")
+	extractStandardTag(genRegex, "gen:")
+
+	extractSimpleTag(zoomRegex, "zoom:")
+	extractSimpleTag(styleRegex, "style:")
+	extractSimpleTag(chapterRegex, "chapter:")
+	extractSimpleTag(sfxRegex, "sfx:")
+	extractSimpleTag(subtitleRegex, "subtitle:")
 	
 	waitMatches := waitRegex.FindAllStringSubmatchIndex(line, -1)
 	for _, m := range waitMatches {
@@ -83,12 +106,6 @@ func extractActions(line string) (string, []model.DrawAction) {
 	clearMatches := clearRegex.FindAllStringSubmatchIndex(line, -1)
 	for _, m := range clearMatches {
 		tags = append(tags, tagInfo{start: m[0], end: m[1], tag: "clear"})
-	}
-	
-	zoomMatches := zoomRegex.FindAllStringSubmatchIndex(line, -1)
-	for _, m := range zoomMatches {
-		target := line[m[2]:m[3]]
-		tags = append(tags, tagInfo{start: m[0], end: m[1], tag: "zoom:" + target})
 	}
 	
 	// Sort tags by start position
@@ -108,19 +125,20 @@ func extractActions(line string) (string, []model.DrawAction) {
 		wordCount := len(strings.Fields(currentClean))
 		
 		if t.isWait {
-			// Special handling for wait? Maybe add as a special action
 			actions = append(actions, model.DrawAction{
-				Tag:       "WAIT:" + strconv.FormatFloat(t.waitVal, 'f', -1, 64),
-				WordIndex: wordCount,
+				Tag:              "WAIT:" + strconv.FormatFloat(t.waitVal, 'f', -1, 64),
+				WordIndex:        wordCount,
+				TriggerAfterWord: wordCount > 0,
 			})
 		} else {
 			actions = append(actions, model.DrawAction{
-				Tag:       t.tag,
-				WordIndex: wordCount,
-				X:         t.x,
-				Y:         t.y,
-				W:         t.w,
-				H:         t.h,
+				Tag:              t.tag,
+				WordIndex:        wordCount,
+				X:                t.x,
+				Y:                t.y,
+				W:                t.w,
+				H:                t.h,
+				TriggerAfterWord: wordCount > 0,
 			})
 		}
 		

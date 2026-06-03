@@ -13,7 +13,7 @@ type Pipe struct {
 	extraCmd *exec.Cmd
 }
 
-func NewPipe(outputPath, audioPath, assPath, bgmPath string, bgmVolume float64, width, height, fps int, duration float64) (*Pipe, error) {
+func NewPipe(outputPath, audioPath, assPath, bgmPath string, bgmVolume float64, width, height, fps int, duration float64, metadataPath string) (*Pipe, error) {
 	args := []string{
 		"-y",
 		"-f", "rawvideo",
@@ -29,6 +29,10 @@ func NewPipe(outputPath, audioPath, assPath, bgmPath string, bgmVolume float64, 
 		args = append(args, "-stream_loop", "-1", "-i", bgmPath)
 	}
 
+	if metadataPath != "" {
+		args = append(args, "-i", metadataPath)
+	}
+
 	if assPath != "" {
 		args = append(args, "-vf", fmt.Sprintf("ass=%s", assPath))
 	}
@@ -39,6 +43,16 @@ func NewPipe(outputPath, audioPath, assPath, bgmPath string, bgmVolume float64, 
 			"-map", "0:v",
 			"-map", "[audio_out]",
 		)
+	} else {
+		args = append(args, "-map", "0:v", "-map", "1:a")
+	}
+
+	if metadataPath != "" {
+		metaIdx := 2
+		if hasBGM {
+			metaIdx = 3
+		}
+		args = append(args, "-map_metadata", fmt.Sprintf("%d", metaIdx))
 	}
 
 	args = append(args,
@@ -84,7 +98,7 @@ func (p *Pipe) Close() error {
 	return err
 }
 
-func NewPreviewPipe(width, height, fps int, audioPath, bgmPath string, bgmVolume float64, duration float64) (*Pipe, error) {
+func NewPreviewPipe(width, height, fps int, audioPath, bgmPath string, bgmVolume float64, duration float64, metadataPath string) (*Pipe, error) {
 	args := []string{
 		"-y",
 		"-f", "rawvideo",
@@ -102,6 +116,10 @@ func NewPreviewPipe(width, height, fps int, audioPath, bgmPath string, bgmVolume
 		args = append(args, "-stream_loop", "-1", "-i", bgmPath)
 	}
 
+	if metadataPath != "" {
+		args = append(args, "-i", metadataPath)
+	}
+
 	if hasBGM && audioPath != "" {
 		args = append(args,
 			"-filter_complex", fmt.Sprintf("[2:a]volume=%.4f[bgm];[1:a][bgm]amix=inputs=2:duration=first:dropout_transition=0[audio_out]", bgmVolume),
@@ -111,6 +129,17 @@ func NewPreviewPipe(width, height, fps int, audioPath, bgmPath string, bgmVolume
 	} else if audioPath != "" {
 		// Just map voice audio if BGM not present
 		args = append(args, "-map", "0:v", "-map", "1:a")
+	}
+
+	if metadataPath != "" {
+		metaIdx := 1
+		if audioPath != "" {
+			metaIdx++
+		}
+		if hasBGM {
+			metaIdx++
+		}
+		args = append(args, "-map_metadata", fmt.Sprintf("%d", metaIdx))
 	}
 
 	args = append(args,

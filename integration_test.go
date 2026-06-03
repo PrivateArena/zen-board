@@ -141,3 +141,78 @@ func TestIntegrationDisableTranscript(t *testing.T) {
 		t.Errorf("Output file %s was not created", outputPath)
 	}
 }
+
+func TestIntegrationAdvancedDSL(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test in short mode")
+	}
+
+	// 1. Mock TTS Server
+	ts := testutil.NewMockTTSServer()
+	defer ts.Close()
+
+	// 2. Setup temporary workspace
+	tmpDir, err := os.MkdirTemp("", "zen-test-advanced-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	scriptPath := filepath.Join(tmpDir, "test.zen")
+	dslScript := `[chapter:"Intro"][style:whiteboard][draw:test:TL] Welcome to whiteboard mode.
+[wait:1.0]
+[subtitle:top][style:blackboard][text:"Hello Dynamic Text":BL:sans:48:bold] Welcome to blackboard mode.
+[wait:1.0]
+[subtitle:off][move:test:BR] Moving asset to bottom right.
+[wait:1.0]
+[erase:test] Erasing the asset.
+[wait:1.0]
+All done.`
+	
+	err = os.WriteFile(scriptPath, []byte(dslScript), 0644)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	outputPath := filepath.Join(tmpDir, "output.mp4")
+	
+	// Create a dummy asset and hand sprite
+	assetsDir := filepath.Join(tmpDir, "assets")
+	os.Mkdir(assetsDir, 0755)
+	
+	createDummyPNG(filepath.Join(assetsDir, "test.png"))
+	handPath := filepath.Join(tmpDir, "hand.png")
+	createDummyPNG(handPath)
+
+	// Create dummy hand variant files to make sure HandRenderer can load them
+	createDummyPNG(filepath.Join(tmpDir, "hand_pencil.png"))
+	createDummyPNG(filepath.Join(tmpDir, "hand_chalk.png"))
+	createDummyPNG(filepath.Join(tmpDir, "hand_eraser.png"))
+	createDummyPNG(filepath.Join(tmpDir, "hand_marker.png"))
+
+	// 3. Run the pipeline
+	oldArgs := os.Args
+	defer func() { os.Args = oldArgs }()
+
+	os.Args = []string{
+		"zen-board",
+		"-script", scriptPath,
+		"-o", outputPath,
+		"-tts", ts.URL,
+		"-assets", assetsDir,
+		"-hand", handPath,
+		"-fps", "10",
+		"-w", "100",
+		"-h", "100",
+	}
+
+	err = Run()
+	if err != nil {
+		t.Fatalf("Run() failed: %v", err)
+	}
+
+	// 4. Verify output exists
+	if _, err := os.Stat(outputPath); os.IsNotExist(err) {
+		t.Errorf("Output file %s was not created", outputPath)
+	}
+}

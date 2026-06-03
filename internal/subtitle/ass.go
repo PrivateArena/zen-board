@@ -6,7 +6,7 @@ import (
 	"zen-board/internal/model"
 )
 
-func GenerateASS(timings []model.WordTiming, width, height int) string {
+func GenerateASS(timings []model.WordTiming, width, height int, events []model.SubtitleEvent) string {
 	var b strings.Builder
 
 	// Header
@@ -17,6 +17,7 @@ func GenerateASS(timings []model.WordTiming, width, height int) string {
 
 	b.WriteString("[V4+ Styles]\n")
 	b.WriteString("Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\n")
+	
 	fontSize := height / 18
 	if fontSize < 12 {
 		fontSize = 12
@@ -25,14 +26,16 @@ func GenerateASS(timings []model.WordTiming, width, height int) string {
 	if marginV < 5 {
 		marginV = 5
 	}
-	b.WriteString(fmt.Sprintf("Style: Default,Arial,%d,&H00FFFFFF,&H000000FF,&H00000000,&H64000000,0,0,0,0,100,100,0,0,1,3,2,2,10,10,%d,1\n\n", fontSize, marginV))
+	
+	// Default Style (Bottom-Center, Alignment = 2)
+	b.WriteString(fmt.Sprintf("Style: Default,Arial,%d,&H00FFFFFF,&H000000FF,&H00000000,&H64000000,0,0,0,0,100,100,0,0,1,3,2,2,10,10,%d,1\n", fontSize, marginV))
+	// Top Style (Top-Center, Alignment = 8)
+	b.WriteString(fmt.Sprintf("Style: TopStyle,Arial,%d,&H00FFFFFF,&H000000FF,&H00000000,&H64000000,0,0,0,0,100,100,0,0,1,3,2,8,10,10,%d,1\n", fontSize, marginV))
+	// Off Style (Invisible, alpha channel &HFFFFFFFF/&HFF)
+	b.WriteString(fmt.Sprintf("Style: OffStyle,Arial,%d,&HFFFFFFFF,&HFFFFFFFF,&HFFFFFFFF,&HFFFFFFFF,0,0,0,0,100,100,0,0,1,0,0,2,10,10,%d,1\n\n", fontSize, marginV))
 
 	b.WriteString("[Events]\n")
 	b.WriteString("Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n")
-
-	// We'll group words into sentences or chunks for display.
-	// For simplicity, let's just show one line that highlights words.
-	// A more advanced version would break into 7-10 word chunks.
 
 	if len(timings) == 0 {
 		return b.String()
@@ -47,9 +50,25 @@ func GenerateASS(timings []model.WordTiming, width, height int) string {
 		}
 		chunk := timings[i:end]
 		
-		startTime := formatASSTime(chunk[0].Start)
+		startTimeSec := chunk[0].Start
+		startTime := formatASSTime(startTimeSec)
 		endTime := formatASSTime(chunk[len(chunk)-1].End)
 		
+		// Determine subtitle state at the chunk start time
+		state := "bottom"
+		for _, ev := range events {
+			if startTimeSec >= ev.Time {
+				state = ev.State
+			}
+		}
+
+		styleName := "Default"
+		if state == "top" {
+			styleName = "TopStyle"
+		} else if state == "off" {
+			styleName = "OffStyle"
+		}
+
 		var lineBuilder strings.Builder
 		for j, w := range chunk {
 			durationCentis := int((w.End - w.Start) * 100)
@@ -59,7 +78,7 @@ func GenerateASS(timings []model.WordTiming, width, height int) string {
 			}
 		}
 		
-		b.WriteString(fmt.Sprintf("Dialogue: 0,%s,%s,Default,,0,0,0,,%s\n", startTime, endTime, lineBuilder.String()))
+		b.WriteString(fmt.Sprintf("Dialogue: 0,%s,%s,%s,,0,0,0,,%s\n", startTime, endTime, styleName, lineBuilder.String()))
 	}
 
 	return b.String()

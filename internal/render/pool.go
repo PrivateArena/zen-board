@@ -11,6 +11,7 @@ type FrameJob struct {
 	Index  int
 	Events []model.FrameEvent
 	Cam    CameraState
+	Style  string
 }
 
 type RenderResult struct {

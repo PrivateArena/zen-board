@@ -16,21 +16,23 @@ type Project struct {
 	BGMPath           string  `json:"bgm_path"`
 	BGMVolume         float64 `json:"bgm_volume"`
 	CameraEnabled     bool    `json:"camera_enabled"`
+	FreezeFrames      int     `json:"freeze_frames"`
 }
 
 func NewDefaultProject() *Project {
 	return &Project{
-		AssetsDir:  "./assets",
-		OutputPath: "output.mp4",
-		FPS:        30,
-		Width:      1920,
-		Height:     1080,
-		TTSAddr:    "http://localhost:5000",
-		Speed:      1.0,
-		HandTipX:   30,
-		HandTipY:   20,
-		Voice:      "am_adam",
-		BGMVolume:  0.05,
+		AssetsDir:    "./assets",
+		OutputPath:   "output.mp4",
+		FPS:          30,
+		Width:        1920,
+		Height:       1080,
+		TTSAddr:      "http://localhost:5000",
+		Speed:        1.0,
+		HandTipX:     30,
+		HandTipY:     20,
+		Voice:        "am_adam",
+		BGMVolume:    0.05,
+		FreezeFrames: 60,
 	}
 }
 
@@ -40,11 +42,14 @@ type ScriptLine struct {
 }
 
 type DrawAction struct {
-	Tag       string  // e.g. "king_death"
-	WordIndex int     // Trigger after this word finishes
-	ImagePath string  // Resolved path to asset PNG
-	X, Y      int
-	W, H      int
+	Tag              string  // e.g. "king_death"
+	WordIndex        int     // Trigger after this word finishes
+	ImagePath        string  // Resolved path to asset PNG
+	X, Y             int
+	W, H             int
+	RevealDuration   float64 // custom duration in seconds
+	TriggerAfterWord bool    // trigger after word end instead of start
+	GenPrompt        string  // prompt for image generation
 }
 
 type WordTiming struct {
@@ -54,12 +59,22 @@ type WordTiming struct {
 }
 
 type FrameEvent struct {
-	TargetImage string
-	StartFrame  int
-	EndFrame    int
-	X, Y        int     // Position on canvas
-	Width, Height int   // Render dimensions
+	TargetImage   string
+	StartFrame    int
+	EndFrame      int
+	X, Y          int     // Position on canvas
+	Width, Height int     // Render dimensions
+	EventType     string  // "draw", "erase", "move", "text"
+	MaskStyle     string  // "diagonal", "ltr", "ttb"
+	HandStyle     string  // "pencil", "chalk", "eraser", "marker"
+	DestX, DestY  int     // destination for "move" events
 }
+
+type SubtitleEvent struct {
+	Time  float64
+	State string // "top", "bottom", "off"
+}
+
 
 type Timeline struct {
 	Events    []FrameEvent
