@@ -1,0 +1,9 @@
+[chapter:"Intro"][style:whiteboard][draw:test:TL] Welcome to whiteboard mode.
+[wait:1.0]
+[subtitle:top][style:blackboard][text:"Hello Dynamic Text":BL:sans:48:bold] Welcome to blackboard mode.
+[wait:1.0]
+[subtitle:off][move:test:BR] Moving asset to bottom right.
+[wait:1.0]
+[erase:test] Erasing the asset.
+[wait:1.0]
+All done.

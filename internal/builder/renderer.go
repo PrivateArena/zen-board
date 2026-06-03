@@ -3,7 +3,6 @@ package builder
 import (
 	"fmt"
 	"image"
-	"log"
 	"sort"
 	"strings"
 	"zen-board/internal/ffmpeg"
