@@ -75,6 +75,45 @@ func CompileTimeline(conf *model.Project, allWordTimings []model.WordTiming, pLi
 	colWidth := (conf.Width - 2*marginX) / 3
 	rowHeight := (conf.Height - 2*marginY) / 2
 
+	// Pre-pass: collect zoom transition windows so draw reveals can be delayed until
+	// the camera has settled. Must match renderer.go's transitionDuration (1 second).
+	zoomTransFrames := int(1.0 * float64(conf.FPS))
+	type zoomInterval struct{ start, end int }
+	var zoomIntervals []zoomInterval
+	for _, pl := range pLines {
+		for _, action := range pl.Actions {
+			if !strings.HasPrefix(action.Tag, "zoom:") {
+				continue
+			}
+			zt := pl.StartTime
+			if action.WordIndex > 0 {
+				idx := pl.WordOffset + action.WordIndex - 1
+				if idx >= 0 && idx < len(allWordTimings) {
+					zt = allWordTimings[idx].Start // match renderer.go: always .Start for zooms
+				}
+			}
+			zf := int(zt * float64(conf.FPS))
+			zoomIntervals = append(zoomIntervals, zoomInterval{zf, zf + zoomTransFrames})
+		}
+	}
+
+	// adjustForZoom pushes startFrame past any active camera-transition window.
+	// Handles cascading zooms by re-checking until stable.
+	adjustForZoom := func(sf int) int {
+		changed := true
+		for changed {
+			changed = false
+			for _, zi := range zoomIntervals {
+				if sf >= zi.start && sf < zi.end {
+					sf = zi.end
+					changed = true
+					break
+				}
+			}
+		}
+		return sf
+	}
+
 	for _, pl := range pLines {
 		for _, action := range pl.Actions {
 			// Find trigger time
@@ -92,13 +131,13 @@ func CompileTimeline(conf *model.Project, allWordTimings []model.WordTiming, pLi
 				}
 			}
 
-			startFrame := int(triggerTime * float64(conf.FPS))
-			
+			rawStartFrame := int(triggerTime * float64(conf.FPS))
+
 			// Handle custom duration parameters or defaults
 			revealDuration := 2.0
 			actionTag := action.Tag
 			preset := ""
-			
+
 			isSpecialPrefix := false
 			specialPrefixes := []string{"WAIT:", "zoom:", "style:", "chapter:", "sfx:", "subtitle:", "text:", "erase:", "move:", "gen:"}
 			for _, prefix := range specialPrefixes {
@@ -107,7 +146,7 @@ func CompileTimeline(conf *model.Project, allWordTimings []model.WordTiming, pLi
 					break
 				}
 			}
-			
+
 			if !isSpecialPrefix {
 				parts := strings.Split(actionTag, ":")
 				if len(parts) > 1 {
@@ -122,6 +161,14 @@ func CompileTimeline(conf *model.Project, allWordTimings []model.WordTiming, pLi
 				if len(parts) > 1 {
 					preset = parts[1]
 				}
+			}
+
+			// For draw/gen/text reveals: delay past any concurrent zoom transition so
+			// the hand-draw animation never plays while the camera is still panning.
+			// zoom/style/erase/move events keep their raw startFrame.
+			startFrame := rawStartFrame
+			if !isSpecialPrefix || strings.HasPrefix(actionTag, "gen:") || strings.HasPrefix(actionTag, "text:") {
+				startFrame = adjustForZoom(rawStartFrame)
 			}
 
 			endFrame := startFrame + int(revealDuration*float64(conf.FPS))

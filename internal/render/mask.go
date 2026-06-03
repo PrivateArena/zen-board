@@ -52,28 +52,29 @@ func GenerateMask(width, height int, progress float64, style string, config Mask
 			}
 		}
 	} else if style == "diagonal" {
-		// Legacy Diagonal sweep
-		stepX := 1.0 / (2.0 * fW)
-		invFeather := 255.0 / config.Feather
-		frontier := progress*1.2 - 0.1
+		// Diagonal TL→BR sweep: pixel is revealed when d = x/W + y/H < frontier (d ranges 0..2)
+		// Sine wave runs along the perpendicular axis (x-y) for a hand-drawn edge.
+		featherD := config.Feather * 2.0
+		if featherD < 0.001 {
+			featherD = 0.001
+		}
+		invFeather := 255.0 / featherD
+		baseFrontier := 2.0 * progress
 
 		for y := 0; y < height; y++ {
-			fY := float64(y)
-			zigzagOffset := config.Amplitude * math.Sin(2*math.Pi*fY/config.Wavelength)
-			rowFrontier := frontier + zigzagOffset
-			posY := fY / (2.0 * fH)
-
-			normalizedPos := posY
 			for x := 0; x < width; x++ {
-				if normalizedPos < rowFrontier {
+				// Perpendicular direction to diagonal: use (x-y) as the along-frontier parameter
+				t := float64(x-y)
+				sineOffset := config.Amplitude * 2.0 * math.Sin(2*math.Pi*t/config.Wavelength)
+				thresh := baseFrontier + sineOffset
+
+				d := float64(x)/fW + float64(y)/fH
+				if d < thresh-featherD {
 					mask.SetAlpha(x, y, color.Alpha{A: 255})
-				} else if normalizedPos < rowFrontier+config.Feather {
-					a := 255 - uint8(invFeather*(normalizedPos-rowFrontier))
+				} else if d < thresh {
+					a := 255 - uint8(invFeather*(d-(thresh-featherD)))
 					mask.SetAlpha(x, y, color.Alpha{A: a})
-				} else {
-					break
 				}
-				normalizedPos += stepX
 			}
 		}
 	} else {
@@ -118,11 +119,26 @@ func GetFrontierPoint(width, height int, progress float64, style string, config 
 		sweep := float64(height) * 0.15 * math.Sin(2*math.Pi*progress*16.0)
 		y += int(sweep)
 	} else if style == "diagonal" {
-		// Legacy diagonal reveal
-		x = int(float64(width) * progress)
-		y = int(float64(height) * progress)
-		sweep := float64(width) * 0.08 * math.Sin(2*math.Pi*progress*12.0)
-		x += int(sweep)
+		// Pencil tracks the TL→BR diagonal frontier with a zigzag perpendicular to it.
+		// Base position: along the diagonal at current progress.
+		bx := progress * float64(width)
+		by := progress * float64(height)
+
+		// Perpendicular direction to diagonal (1,1): normalized (W, -H) vector.
+		diagLen := math.Sqrt(float64(width*width + height*height))
+		perpX := float64(width) / diagLen
+		perpY := -float64(height) / diagLen
+
+		// Zigzag: 10 cycles across progress 0→1, amplitude = 18% of shorter dimension.
+		short := float64(width)
+		if height < width {
+			short = float64(height)
+		}
+		amp := 0.18 * short
+		osc := amp * math.Sin(2*math.Pi*progress*10.0)
+
+		x = int(bx + osc*perpX)
+		y = int(by + osc*perpY)
 	} else {
 		// Top-to-bottom band sweep
 		y = int(progress * float64(height))

@@ -184,9 +184,14 @@ func (e *Engine) RenderFrame(frameNum int, events []model.FrameEvent, cam Camera
 			renderY = ev.Y
 		}
 
-		progress := float64(frameNum-ev.StartFrame) / float64(ev.EndFrame-ev.StartFrame)
-		if progress > 1.0 {
+		var progress float64
+		if ev.EndFrame <= ev.StartFrame {
 			progress = 1.0
+		} else {
+			progress = float64(frameNum-ev.StartFrame) / float64(ev.EndFrame-ev.StartFrame)
+			if progress > 1.0 {
+				progress = 1.0
+			}
 		}
 
 		destRect := image.Rect(renderX, renderY, renderX+img.Bounds().Dx(), renderY+img.Bounds().Dy())
