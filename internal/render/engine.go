@@ -6,10 +6,13 @@ import (
 	"image/draw"
 	"os"
 	"sync"
-	"zen-board/internal/model"
 
 	_ "image/jpeg"
 	_ "image/png"
+
+	"zen-board/internal/model"
+
+	xdraw "golang.org/x/image/draw"
 )
 
 type Engine struct {
@@ -76,7 +79,7 @@ func (e *Engine) LoadAsset(name, path string) error {
 // RenderFrame generates a single frame based on the active events.
 func (e *Engine) RenderFrame(frameNum int, events []model.FrameEvent, cam CameraState) *image.RGBA {
 	buf := e.Pool.BufferPool.Get().(*image.RGBA)
-	
+
 	// 1. Clear with white background
 	white := image.NewUniform(image.White)
 	draw.Draw(buf, buf.Bounds(), white, image.Point{}, draw.Src)
@@ -160,7 +163,7 @@ func (e *Engine) RenderFrame(frameNum int, events []model.FrameEvent, cam Camera
 		} else {
 			// Generate mask for this specific image reveal
 			mask := GenerateMask(img.Bounds().Dx(), img.Bounds().Dy(), progress, maskCfg)
-			
+
 			// Draw masked image onto canvas
 			draw.DrawMask(buf, destRect, img, image.Point{}, mask, image.Point{}, draw.Over)
 
@@ -190,19 +193,10 @@ func scaleImage(src image.Image, w, h int) image.Image {
 	if w <= 0 || h <= 0 {
 		return src
 	}
-	bounds := src.Bounds()
-	srcW := bounds.Dx()
-	srcH := bounds.Dy()
-	if srcW == w && srcH == h {
+	if src.Bounds().Dx() == w && src.Bounds().Dy() == h {
 		return src
 	}
 	dst := image.NewRGBA(image.Rect(0, 0, w, h))
-	for y := 0; y < h; y++ {
-		srcY := bounds.Min.Y + (y * srcH / h)
-		for x := 0; x < w; x++ {
-			srcX := bounds.Min.X + (x * srcW / w)
-			dst.Set(x, y, src.At(srcX, srcY))
-		}
-	}
+	xdraw.CatmullRom.Scale(dst, dst.Bounds(), src, src.Bounds(), xdraw.Over, nil)
 	return dst
 }
