@@ -113,6 +113,43 @@ func (e *Engine) RenderFrame(frameNum int, events []model.FrameEvent, cam Camera
 			continue
 		}
 
+		// Determine visibility of the event in the current camera state
+		evFocus := ev.ZoomFocus
+		if evFocus == "" {
+			evFocus = "reset"
+		}
+
+		isVisibleIn := func(focus, preset string) bool {
+			return focus == preset || preset == "reset"
+		}
+
+		srcPreset := cam.SourcePreset
+		if srcPreset == "" {
+			srcPreset = "reset"
+		}
+		tgtPreset := cam.TargetPreset
+		if tgtPreset == "" {
+			tgtPreset = "reset"
+		}
+
+		var visibility float64 = 1.0
+		srcVis := isVisibleIn(evFocus, srcPreset)
+		tgtVis := isVisibleIn(evFocus, tgtPreset)
+
+		if srcVis && tgtVis {
+			visibility = 1.0
+		} else if srcVis && !tgtVis {
+			visibility = 1.0 - cam.TransitionT
+		} else if !srcVis && tgtVis {
+			visibility = cam.TransitionT
+		} else {
+			visibility = 0.0
+		}
+
+		if visibility <= 0.0 {
+			continue
+		}
+
 		e.AssetMu.RLock()
 		img, ok := e.Assets[ev.TargetImage]
 		e.AssetMu.RUnlock()
@@ -200,6 +237,16 @@ func (e *Engine) RenderFrame(frameNum int, events []model.FrameEvent, cam Camera
 
 		destRect := image.Rect(renderX, renderY, renderX+img.Bounds().Dx(), renderY+img.Bounds().Dy())
 
+		if ev.EventType == "static" {
+			if visibility >= 1.0 {
+				draw.Draw(buf, destRect, img, image.Point{}, draw.Over)
+			} else {
+				maskUniform := image.NewUniform(color.Alpha{A: uint8(visibility * 255)})
+				draw.DrawMask(buf, destRect, img, image.Point{}, maskUniform, image.Point{}, draw.Over)
+			}
+			continue
+		}
+
 		if ev.EventType == "move" {
 			rawT := float64(frameNum-ev.StartFrame) / float64(ev.EndFrame-ev.StartFrame)
 			if rawT > 1.0 {
@@ -209,7 +256,12 @@ func (e *Engine) RenderFrame(frameNum int, events []model.FrameEvent, cam Camera
 			curX := ev.X + int(float64(ev.DestX-ev.X)*easedT)
 			curY := ev.Y + int(float64(ev.DestY-ev.Y)*easedT)
 			destRect = image.Rect(curX, curY, curX+renderW, curY+renderH)
-			draw.Draw(buf, destRect, img, image.Point{}, draw.Over)
+			if visibility >= 1.0 {
+				draw.Draw(buf, destRect, img, image.Point{}, draw.Over)
+			} else {
+				maskUniform := image.NewUniform(color.Alpha{A: uint8(visibility * 255)})
+				draw.DrawMask(buf, destRect, img, image.Point{}, maskUniform, image.Point{}, draw.Over)
+			}
 
 			dx := ev.DestX - ev.X
 			dy := ev.DestY - ev.Y
@@ -257,6 +309,11 @@ func (e *Engine) RenderFrame(frameNum int, events []model.FrameEvent, cam Camera
 					mask.Pix[i] = uint8(float64(mask.Pix[i]) * factor)
 				}
 			}
+			if visibility < 1.0 {
+				for i := range mask.Pix {
+					mask.Pix[i] = uint8(float64(mask.Pix[i]) * visibility)
+				}
+			}
 			draw.DrawMask(buf, destRect, img, image.Point{}, mask, image.Point{}, draw.Over)
 
 			fx, fy := GetFrontierPoint(img.Bounds().Dx(), img.Bounds().Dy(), easedProgress, ev.MaskStyle, maskCfg)
@@ -273,7 +330,12 @@ func (e *Engine) RenderFrame(frameNum int, events []model.FrameEvent, cam Camera
 		}
 
 		if easedProgress >= 1.0 {
-			draw.Draw(buf, destRect, img, image.Point{}, draw.Over)
+			if visibility >= 1.0 {
+				draw.Draw(buf, destRect, img, image.Point{}, draw.Over)
+			} else {
+				maskUniform := image.NewUniform(color.Alpha{A: uint8(visibility * 255)})
+				draw.DrawMask(buf, destRect, img, image.Point{}, maskUniform, image.Point{}, draw.Over)
+			}
 		} else {
 			mask := GenerateMask(img.Bounds().Dx(), img.Bounds().Dy(), easedProgress, ev.MaskStyle, maskCfg)
 			if easedProgress >= 0.9 {
@@ -281,6 +343,11 @@ func (e *Engine) RenderFrame(frameNum int, events []model.FrameEvent, cam Camera
 				for i := range mask.Pix {
 					val := float64(mask.Pix[i])
 					mask.Pix[i] = uint8(val + (255.0-val)*factor)
+				}
+			}
+			if visibility < 1.0 {
+				for i := range mask.Pix {
+					mask.Pix[i] = uint8(float64(mask.Pix[i]) * visibility)
 				}
 			}
 			draw.DrawMask(buf, destRect, img, image.Point{}, mask, image.Point{}, draw.Over)

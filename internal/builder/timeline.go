@@ -70,6 +70,7 @@ func CompileTimeline(conf *model.Project, allWordTimings []model.WordTiming, pLi
 
 	currentStyle := "whiteboard"
 	gridIndex := 0
+	currentZoomFocus := "reset"
 	marginX := int(float64(conf.Width) * 0.05)
 	marginY := int(float64(conf.Height) * 0.05)
 	colWidth := (conf.Width - 2*marginX) / 3
@@ -178,6 +179,7 @@ func CompileTimeline(conf *model.Project, allWordTimings []model.WordTiming, pLi
 			}
 
 			if strings.HasPrefix(action.Tag, "zoom:") {
+				currentZoomFocus = strings.TrimPrefix(action.Tag, "zoom:")
 				continue
 			}
 
@@ -266,6 +268,11 @@ func CompileTimeline(conf *model.Project, allWordTimings []model.WordTiming, pLi
 						th = ph - 2*padH
 					}
 
+					evFocus := preset
+					if evFocus == "" {
+						evFocus = currentZoomFocus
+					}
+
 					event := model.FrameEvent{
 						TargetImage: textAssetID,
 						StartFrame:  startFrame,
@@ -277,6 +284,7 @@ func CompileTimeline(conf *model.Project, allWordTimings []model.WordTiming, pLi
 						EventType:   "text",
 						MaskStyle:   "ltr",
 						HandStyle:   "marker",
+						ZoomFocus:   evFocus,
 					}
 					timeline.Events = append(timeline.Events, event)
 					// Persist text on screen after reveal animation
@@ -285,7 +293,8 @@ func CompileTimeline(conf *model.Project, allWordTimings []model.WordTiming, pLi
 						StartFrame:  endFrame,
 						EndFrame:    999999,
 						X: tx, Y: ty, Width: tw, Height: th,
-						EventType:   "draw",
+						EventType:   "static",
+						ZoomFocus:   evFocus,
 					})
 				}
 				continue
@@ -293,11 +302,17 @@ func CompileTimeline(conf *model.Project, allWordTimings []model.WordTiming, pLi
 
 			if action.Tag == "erase:*" {
 				clearFrame := startFrame
-				for i := range timeline.Events {
-					if timeline.Events[i].EndFrame > clearFrame {
-						timeline.Events[i].EndFrame = clearFrame
+				var activeEvents []model.FrameEvent
+				for _, ev := range timeline.Events {
+					if ev.StartFrame >= clearFrame {
+						continue
 					}
+					if ev.EndFrame > clearFrame {
+						ev.EndFrame = clearFrame
+					}
+					activeEvents = append(activeEvents, ev)
 				}
+				timeline.Events = activeEvents
 				gridIndex = 0
 				continue
 			}
@@ -311,14 +326,16 @@ func CompileTimeline(conf *model.Project, allWordTimings []model.WordTiming, pLi
 					EventType:   "erase",
 					HandStyle:   "eraser",
 					MaskStyle:   "ttb",
+					ZoomFocus:   currentZoomFocus,
 				}
 				
 				for i := len(timeline.Events) - 1; i >= 0; i-- {
-					if timeline.Events[i].TargetImage == targetAsset && timeline.Events[i].EventType == "draw" {
+					if timeline.Events[i].TargetImage == targetAsset && (timeline.Events[i].EventType == "draw" || timeline.Events[i].EventType == "text" || timeline.Events[i].EventType == "gen" || timeline.Events[i].EventType == "static") {
 						eraseEvent.X = timeline.Events[i].X
 						eraseEvent.Y = timeline.Events[i].Y
 						eraseEvent.Width = timeline.Events[i].Width
 						eraseEvent.Height = timeline.Events[i].Height
+						eraseEvent.ZoomFocus = timeline.Events[i].ZoomFocus
 						if timeline.Events[i].EndFrame > startFrame {
 							timeline.Events[i].EndFrame = startFrame
 						}
@@ -340,6 +357,7 @@ func CompileTimeline(conf *model.Project, allWordTimings []model.WordTiming, pLi
 				var startX, startY int
 				var startW, startH int
 				found := false
+				var evFocus string = currentZoomFocus
 				for i := len(timeline.Events) - 1; i >= 0; i-- {
 					if timeline.Events[i].TargetImage == targetAsset {
 						if timeline.Events[i].EventType == "move" {
@@ -351,6 +369,7 @@ func CompileTimeline(conf *model.Project, allWordTimings []model.WordTiming, pLi
 						}
 						startW = timeline.Events[i].Width
 						startH = timeline.Events[i].Height
+						evFocus = timeline.Events[i].ZoomFocus
 						found = true
 						if timeline.Events[i].EndFrame > startFrame {
 							timeline.Events[i].EndFrame = startFrame
@@ -361,6 +380,7 @@ func CompileTimeline(conf *model.Project, allWordTimings []model.WordTiming, pLi
 
 				if found {
 					destX, destY := startX, startY
+					moveFocus := evFocus
 					if destPreset != "" {
 						px, py, pw, ph := getPresetLayout(destPreset, conf.Width, conf.Height)
 						padW := int(float64(pw) * 0.1)
@@ -369,6 +389,7 @@ func CompileTimeline(conf *model.Project, allWordTimings []model.WordTiming, pLi
 						destY = py + padH
 						startW = pw - 2*padW
 						startH = ph - 2*padH
+						moveFocus = destPreset
 					} else if action.X != 0 || action.Y != 0 {
 						destX = action.X
 						destY = action.Y
@@ -390,6 +411,7 @@ func CompileTimeline(conf *model.Project, allWordTimings []model.WordTiming, pLi
 						DestX:       destX,
 						DestY:       destY,
 						HandStyle:   "pencil",
+						ZoomFocus:   moveFocus,
 					}
 					timeline.Events = append(timeline.Events, moveEvent)
 
@@ -401,7 +423,8 @@ func CompileTimeline(conf *model.Project, allWordTimings []model.WordTiming, pLi
 						Y:           destY,
 						Width:       startW,
 						Height:      startH,
-						EventType:   "draw",
+						EventType:   "static",
+						ZoomFocus:   moveFocus,
 					}
 					timeline.Events = append(timeline.Events, staticDrawEvent)
 				}
@@ -436,6 +459,11 @@ func CompileTimeline(conf *model.Project, allWordTimings []model.WordTiming, pLi
 					th = ph - 2*padH
 				}
 
+				genFocus := preset
+				if genFocus == "" {
+					genFocus = currentZoomFocus
+				}
+
 				event := model.FrameEvent{
 					TargetImage: genAssetID,
 					StartFrame:  startFrame,
@@ -447,6 +475,7 @@ func CompileTimeline(conf *model.Project, allWordTimings []model.WordTiming, pLi
 					EventType:   "draw",
 					MaskStyle:   "diagonal",
 					HandStyle:   "pencil",
+					ZoomFocus:   genFocus,
 				}
 				timeline.Events = append(timeline.Events, event)
 				// Persist generated image on screen after reveal
@@ -455,18 +484,25 @@ func CompileTimeline(conf *model.Project, allWordTimings []model.WordTiming, pLi
 					StartFrame:  endFrame,
 					EndFrame:    999999,
 					X: tx, Y: ty, Width: tw, Height: th,
-					EventType:   "draw",
+					EventType:   "static",
+					ZoomFocus:   genFocus,
 				})
 				continue
 			}
 
 			if action.Tag == "clear" {
 				clearFrame := startFrame
-				for i := range timeline.Events {
-					if timeline.Events[i].EndFrame > clearFrame {
-						timeline.Events[i].EndFrame = clearFrame
+				var activeEvents []model.FrameEvent
+				for _, ev := range timeline.Events {
+					if ev.StartFrame >= clearFrame {
+						continue
 					}
+					if ev.EndFrame > clearFrame {
+						ev.EndFrame = clearFrame
+					}
+					activeEvents = append(activeEvents, ev)
 				}
+				timeline.Events = activeEvents
 				gridIndex = 0
 				continue
 			}
@@ -498,6 +534,11 @@ func CompileTimeline(conf *model.Project, allWordTimings []model.WordTiming, pLi
 				gridIndex++
 			}
 
+			drawFocus := preset
+			if drawFocus == "" {
+				drawFocus = currentZoomFocus
+			}
+
 			// Reveal animation event
 			timeline.Events = append(timeline.Events, model.FrameEvent{
 				TargetImage: actionTag,
@@ -510,6 +551,7 @@ func CompileTimeline(conf *model.Project, allWordTimings []model.WordTiming, pLi
 				EventType:   "draw",
 				MaskStyle:   "diagonal",
 				HandStyle:   "pencil",
+				ZoomFocus:   drawFocus,
 			})
 			// Persistence event: image stays on screen after reveal
 			timeline.Events = append(timeline.Events, model.FrameEvent{
@@ -520,7 +562,8 @@ func CompileTimeline(conf *model.Project, allWordTimings []model.WordTiming, pLi
 				Y:           y,
 				Width:       w,
 				Height:      h,
-				EventType:   "draw",
+				EventType:   "static",
+				ZoomFocus:   drawFocus,
 			})
 		}
 	}

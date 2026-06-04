@@ -8,42 +8,58 @@ import (
 
 
 type CameraState struct {
-	X, Y, W, H float64
+	X, Y, W, H   float64
+	SourcePreset string
+	TargetPreset string
+	TransitionT  float64
 }
 
 func GetPresetViewport(preset string, canvasW, canvasH int) CameraState {
 	fW := float64(canvasW)
 	fH := float64(canvasH)
+	pName := preset
+	if pName == "" {
+		pName = "reset"
+	}
+	var res CameraState
 	switch preset {
 	case "TL":
-		return CameraState{0, 0, fW / 2, fH / 2}
+		res = CameraState{X: 0, Y: 0, W: fW / 2, H: fH / 2}
 	case "TR":
-		return CameraState{fW / 2, 0, fW / 2, fH / 2}
+		res = CameraState{X: fW / 2, Y: 0, W: fW / 2, H: fH / 2}
 	case "BL":
-		return CameraState{0, fH / 2, fW / 2, fH / 2}
+		res = CameraState{X: 0, Y: fH / 2, W: fW / 2, H: fH / 2}
 	case "BR":
-		return CameraState{fW / 2, fH / 2, fW / 2, fH / 2}
+		res = CameraState{X: fW / 2, Y: fH / 2, W: fW / 2, H: fH / 2}
 	case "HT":
-		return CameraState{0, 0, fW, fH / 2}
+		res = CameraState{X: 0, Y: 0, W: fW, H: fH / 2}
 	case "HB":
-		return CameraState{0, fH / 2, fW, fH / 2}
+		res = CameraState{X: 0, Y: fH / 2, W: fW, H: fH / 2}
 	case "LH":
-		return CameraState{0, 0, fW / 2, fH}
+		res = CameraState{X: 0, Y: 0, W: fW / 2, H: fH}
 	case "RH":
-		return CameraState{fW / 2, 0, fW / 2, fH}
+		res = CameraState{X: fW / 2, Y: 0, W: fW / 2, H: fH}
 	default:
-		return CameraState{0, 0, fW, fH}
+		res = CameraState{X: 0, Y: 0, W: fW, H: fH}
+		pName = "reset"
 	}
+	res.SourcePreset = pName
+	res.TargetPreset = pName
+	res.TransitionT = 1.0
+	return res
 }
 
 func LerpCamera(start, end CameraState, t float64) CameraState {
 	// Smoothstep easing: t = t * t * (3 - 2 * t)
-	t = t * t * (3 - 2*t)
+	tEase := t * t * (3 - 2*t)
 	return CameraState{
-		X: start.X + (end.X-start.X)*t,
-		Y: start.Y + (end.Y-start.Y)*t,
-		W: start.W + (end.W-start.W)*t,
-		H: start.H + (end.H-start.H)*t,
+		X:            start.X + (end.X-start.X)*tEase,
+		Y:            start.Y + (end.Y-start.Y)*tEase,
+		W:            start.W + (end.W-start.W)*tEase,
+		H:            start.H + (end.H-start.H)*tEase,
+		SourcePreset: start.TargetPreset,
+		TargetPreset: end.TargetPreset,
+		TransitionT:  t,
 	}
 }
 

@@ -111,16 +111,16 @@ func GetFrontierPoint(width, height int, progress float64, style string, config 
 		// Hand tracks the vertical-center of the LTR sweep band with a gentle vertical oscillation.
 		bandX := progress*1.2*fW - 0.1*fW
 		x = int(math.Max(0, math.Min(fW-1, bandX)))
-		// Gentle vertical sweep: 2 cycles across progress
-		sweep := fH * 0.35 * math.Sin(2*math.Pi*progress*2.0)
+		// Gentle vertical sweep: 1 cycle across progress
+		sweep := fH * 0.35 * math.Sin(2*math.Pi*progress*1.0)
 		y = int(fH/2 + sweep)
 
 	} else if style == "diagonal" {
 		// Hand sits on the actual diagonal mask boundary by solving for y given oscillating x.
 		// Frontier: x/W + y/H = 2*progress + Amplitude*2*sin(2π*(x-y)/Wavelength)
 		//
-		// Choose x oscillating across the image (10 cycles = one stroke per 10% progress).
-		numCycles := 10.0
+		// Choose x oscillating across the image (1.5 cycles)
+		numCycles := 1.5
 		oscFrac := 0.5 + 0.4*math.Sin(2*math.Pi*progress*numCycles)
 		hx := oscFrac * fW
 
@@ -138,8 +138,8 @@ func GetFrontierPoint(width, height int, progress float64, style string, config 
 		// "ttb": hand tracks the actual bandY position with a gentle horizontal sweep.
 		bandY := progress*1.2*fH - 0.1*fH
 		y = int(math.Max(0, math.Min(fH-1, bandY)))
-		// Gentle x sweep: 1.5 cycles, covers 60% of width
-		sweep := fW * 0.30 * math.Sin(2*math.Pi*progress*1.5)
+		// Gentle x sweep: 1 cycle, covers 60% of width
+		sweep := fW * 0.30 * math.Sin(2*math.Pi*progress*1.0)
 		x = int(fW/2 + sweep)
 	}
 

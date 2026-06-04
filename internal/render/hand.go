@@ -136,6 +136,22 @@ func (h *HandRenderer) Draw(dst draw.Image, x, y int, frame int, style string, a
 	if style == "eraser" {
 		tipX = sprite.Bounds().Dx() / 2
 		tipY = sprite.Bounds().Dy() / 2
+	} else {
+		bucket := snapAngle(angleDeg)
+		if bucket != 0 {
+			if styleCache, ok := h.rotCache[style]; ok {
+				if _, ok := styleCache[bucket]; ok {
+					cx := float64(sprite.Bounds().Dx()) / 2
+					cy := float64(sprite.Bounds().Dy()) / 2
+					rad := float64(bucket) * math.Pi / 180.0
+					cos, sin := math.Cos(rad), math.Sin(rad)
+					rx := float64(tipX) - cx
+					ry := float64(tipY) - cy
+					tipX = int(math.Round(cx + rx*cos - ry*sin))
+					tipY = int(math.Round(cy + rx*sin + ry*cos))
+				}
+			}
+		}
 	}
 
 	offset := image.Pt(x-tipX, y-tipY+int(jitter))

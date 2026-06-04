@@ -23,8 +23,8 @@ func TestGetPresetViewport(t *testing.T) {
 }
 
 func TestLerpCamera(t *testing.T) {
-	start := CameraState{0, 0, 1920, 1080}
-	end := CameraState{100, 200, 960, 540}
+	start := CameraState{X: 0, Y: 0, W: 1920, H: 1080}
+	end := CameraState{X: 100, Y: 200, W: 960, H: 540}
 	
 	// At t = 0.5, smoothstep (0.5 * 0.5 * (3 - 2 * 0.5) = 0.5) is exactly 0.5
 	mid := LerpCamera(start, end, 0.5)
@@ -38,7 +38,7 @@ func TestCropAndScale(t *testing.T) {
 	src.Set(10, 10, color.RGBA{R: 255, G: 0, B: 0, A: 255})
 	
 	// Zoom to first quadrant (0, 0, 50, 50)
-	cam := CameraState{0, 0, 50, 50}
+	cam := CameraState{X: 0, Y: 0, W: 50, H: 50}
 	dst := CropAndScale(src, cam, 100, 100)
 	
 	if dst.Bounds().Dx() != 100 || dst.Bounds().Dy() != 100 {

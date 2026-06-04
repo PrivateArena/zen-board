@@ -1,6 +1,15 @@
-[draw:world] The history of the world is a story of constant change.
+Welcome to our demo script. [draw:world:LH] First, we draw the world on the left.
+[wait:1.5]
+Now we zoom into the top right quadrant. [zoom:TR] Let's draw a futuristic city here. [draw:city:TR]
+[wait:1.5]
+Now let's zoom to the bottom right quadrant. [zoom:BR] Here are the pyramids of the ancient world. [draw:pyramids:BR]
+[wait:1.5]
+We will now clear the board. [clear] See, the board is clean!
+[wait:1.5]
+Let's reset the camera. [zoom:reset] We will render a robot in the center. [draw:robot]
+[wait:1.5]
+Let's shift the robot to the bottom left. [move:robot:BL]
 [wait:1.0]
-From ancient civilizations [zoom:TL][draw:pyramids:TL] to the modern era [zoom:TR][draw:city:TR], humanity has always strived for progress.
+Finally, we write some text on the right half. [zoom:RH] [text:"AI Innovation":RH]
 [wait:2.0]
-And now [zoom:reset], we are entering [zoom:HB] the age of AI [draw:robot:HB].
-The future is here [zoom:reset].
+And we reset everything. [zoom:reset]

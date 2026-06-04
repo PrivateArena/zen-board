@@ -64,10 +64,11 @@ type FrameEvent struct {
 	EndFrame      int
 	X, Y          int     // Position on canvas
 	Width, Height int     // Render dimensions
-	EventType     string  // "draw", "erase", "move", "text"
+	EventType     string  // "draw", "erase", "move", "text", "static"
 	MaskStyle     string  // "diagonal", "ltr", "ttb"
 	HandStyle     string  // "pencil", "chalk", "eraser", "marker"
 	DestX, DestY  int     // destination for "move" events
+	ZoomFocus     string  `json:"zoom_focus"`
 }
 
 type SubtitleEvent struct {
