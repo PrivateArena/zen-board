@@ -63,7 +63,7 @@ func LerpCamera(start, end CameraState, t float64) CameraState {
 	}
 }
 
-func CropAndScale(src *image.RGBA, cam CameraState, targetW, targetH int) *image.RGBA {
+func CropAndScale(src *image.RGBA, cam CameraState, targetW, targetH int, fastMode bool) *image.RGBA {
 	epsilon := 0.5
 	if math.Abs(cam.X) < epsilon && math.Abs(cam.Y) < epsilon &&
 		math.Abs(cam.W-float64(targetW)) < epsilon && math.Abs(cam.H-float64(targetH)) < epsilon {
@@ -82,6 +82,25 @@ func CropAndScale(src *image.RGBA, cam CameraState, targetW, targetH int) *image
 
 	maxX := src.Bounds().Max.X - 1
 	maxY := src.Bounds().Max.Y - 1
+
+	if fastMode {
+		for y := 0; y < targetH; y++ {
+			fy := yMin + float64(y)*cropH/float64(targetH)
+			y0 := int(fy)
+			if y0 > maxY {
+				y0 = maxY
+			}
+			for x := 0; x < targetW; x++ {
+				fx := xMin + float64(x)*cropW/float64(targetW)
+				x0 := int(fx)
+				if x0 > maxX {
+					x0 = maxX
+				}
+				dst.SetRGBA(x, y, src.RGBAAt(x0, y0))
+			}
+		}
+		return dst
+	}
 
 	for y := 0; y < targetH; y++ {
 		fy := yMin + float64(y)*cropH/float64(targetH)

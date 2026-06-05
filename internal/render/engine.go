@@ -42,6 +42,7 @@ type Engine struct {
 	ScaledAssets  map[string]image.Image
 	AssetMu       sync.RWMutex
 	Stats         RenderStats
+	FastMode      bool
 }
 
 func NewEngine(w, h, fps int, handPath string, tipX, tipY int) (*Engine, error) {
@@ -463,7 +464,7 @@ func (e *Engine) RenderFrame(frameNum int, events []model.FrameEvent, cam Camera
 
 	// 4. Crop and Scale relative to CameraState
 	tCropScaleStart := time.Now()
-	finalFrame := CropAndScale(buf, cam, e.Width, e.Height)
+	finalFrame := CropAndScale(buf, cam, e.Width, e.Height, e.FastMode)
 	if finalFrame != buf {
 		e.Pool.BufferPool.Put(buf)
 	}

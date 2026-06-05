@@ -39,7 +39,7 @@ func TestCropAndScale(t *testing.T) {
 	
 	// Zoom to first quadrant (0, 0, 50, 50)
 	cam := CameraState{X: 0, Y: 0, W: 50, H: 50}
-	dst := CropAndScale(src, cam, 100, 100)
+	dst := CropAndScale(src, cam, 100, 100, false)
 	
 	if dst.Bounds().Dx() != 100 || dst.Bounds().Dy() != 100 {
 		t.Errorf("Expected output bounds 100x100, got %dx%d", dst.Bounds().Dx(), dst.Bounds().Dy())

@@ -13,7 +13,7 @@ type Pipe struct {
 	extraCmd *exec.Cmd
 }
 
-func NewPipe(outputPath, audioPath, assPath, bgmPath string, bgmVolume float64, width, height, fps int, duration float64, metadataPath string) (*Pipe, error) {
+func NewPipe(outputPath, audioPath, assPath, bgmPath string, bgmVolume float64, width, height, fps int, duration float64, metadataPath string, fastMode bool) (*Pipe, error) {
 	videoIdx := 0
 	audioIdx := 1
 	bgmIdx := -1
@@ -66,9 +66,14 @@ func NewPipe(outputPath, audioPath, assPath, bgmPath string, bgmVolume float64, 
 		args = append(args, "-map_metadata", fmt.Sprintf("%d", metaIdx))
 	}
 
+	preset := "fast"
+	if fastMode {
+		preset = "ultrafast"
+	}
+
 	args = append(args,
 		"-c:v", "libx264",
-		"-preset", "fast",
+		"-preset", preset,
 		"-crf", "18",
 		"-pix_fmt", "yuv420p",
 		"-c:a", "aac",

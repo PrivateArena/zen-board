@@ -89,6 +89,8 @@ func Run() error {
 	bgmVolume := fs.Float64("bgm-vol", conf.BGMVolume, "Background music volume multiplier")
 	cameraEnabled := fs.Bool("camera", conf.CameraEnabled, "Enable camera zoom effects")
 	freezeFrames := fs.Int("freeze", conf.FreezeFrames, "Number of freeze frames at the end of the video")
+	fast := fs.Bool("fast", false, "Enable fast preview rendering mode (uses nearest-neighbor camera scale, ultrafast H.264 preset)")
+	ttsCacheDir := fs.String("tts-cache", conf.TTSCacheDir, "Directory to cache TTS audio/timings")
 	
 	if err := fs.Parse(os.Args[1:]); err != nil {
 		return err
@@ -101,6 +103,17 @@ func Run() error {
 	conf.FPS = *fps
 	conf.Width = *width
 	conf.Height = *height
+	if *fast {
+		conf.Width /= 2
+		conf.Height /= 2
+		if conf.Width%2 != 0 {
+			conf.Width++
+		}
+		if conf.Height%2 != 0 {
+			conf.Height++
+		}
+		log.Printf("[Fast Mode] Canvas size scaled down to %dx%d for preview", conf.Width, conf.Height)
+	}
 	conf.TTSAddr = *ttsAddr
 	conf.Speed = *speed
 	conf.Voice = *voice
@@ -109,6 +122,7 @@ func Run() error {
 	conf.BGMVolume = *bgmVolume
 	conf.CameraEnabled = *cameraEnabled
 	conf.FreezeFrames = *freezeFrames
+	conf.TTSCacheDir = *ttsCacheDir
 
 	if conf.ScriptPath == "" {
 		return fmt.Errorf("-script is required")
@@ -123,7 +137,7 @@ func Run() error {
 	lines = script.SplitInlineWaits(lines)
 
 	// 2. TTS & Timing
-	client := tts.NewClient(conf.TTSAddr)
+	client := tts.NewClient(conf.TTSAddr, conf.TTSCacheDir)
 	tTtsStart := time.Now()
 	finalAudio, allWordTimings, pLines, err := tts.OrchestrateTTS(client, lines, *speed, conf.Voice)
 	if err != nil {
@@ -199,6 +213,7 @@ func Run() error {
 	if err != nil {
 		return fmt.Errorf("engine: %w", err)
 	}
+	engine.FastMode = *fast || *preview
 
 	err = builder.PrepareAssets(conf, engine, comp.Timeline, comp.TextJobs, comp.GenJobs)
 	if err != nil {
@@ -210,7 +225,7 @@ func Run() error {
 	if *preview {
 		pipe, err = ffmpeg.NewPreviewPipe(conf.Width, conf.Height, conf.FPS, audioTmp, conf.BGMPath, conf.BGMVolume, extendedDuration, metadataTmp)
 	} else {
-		pipe, err = ffmpeg.NewPipe(conf.OutputPath, audioTmp, subsTmp, conf.BGMPath, conf.BGMVolume, conf.Width, conf.Height, conf.FPS, extendedDuration, metadataTmp)
+		pipe, err = ffmpeg.NewPipe(conf.OutputPath, audioTmp, subsTmp, conf.BGMPath, conf.BGMVolume, conf.Width, conf.Height, conf.FPS, extendedDuration, metadataTmp, *fast)
 	}
 	if err != nil {
 		return fmt.Errorf("pipe: %w", err)

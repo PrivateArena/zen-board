@@ -2,23 +2,28 @@ package tts
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/binary"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
+	"path/filepath"
 
 	"zen-board/internal/model"
 )
 
 type TTSClient struct {
-	Addr string
+	Addr     string
+	CacheDir string
 }
 
-func NewClient(addr string) *TTSClient {
-	return &TTSClient{Addr: addr}
+func NewClient(addr string, cacheDir string) *TTSClient {
+	return &TTSClient{Addr: addr, CacheDir: cacheDir}
 }
 
 type ttsRequest struct {
@@ -54,9 +59,70 @@ type TTSResult struct {
 	Duration float64          // exact audio duration derived from WAV samples
 }
 
-// SynthesizeWithTimings calls /tts?timestamps=1 and decodes the JSON envelope.
-// Falls back transparently to raw-WAV Synthesize() if the server returns audio/wav.
+type CachedMetadata struct {
+	Timings  []model.WordTiming `json:"timings"`
+	Duration float64            `json:"duration"`
+}
+
+func getCacheKey(text string, speed float64, voice string) string {
+	hasher := sha256.New()
+	hasher.Write([]byte(fmt.Sprintf("%s|%f|%s", text, speed, voice)))
+	return hex.EncodeToString(hasher.Sum(nil))
+}
+
+// SynthesizeWithTimings wraps SynthesizeWithTimingsRaw with file-based caching.
 func (c *TTSClient) SynthesizeWithTimings(text string, speed float64, voice string) (*TTSResult, error) {
+	cacheDir := c.CacheDir
+	if cacheDir == "" {
+		cacheDir = "/tmp/zen-board/tts"
+	}
+	hashKey := getCacheKey(text, speed, voice)
+	wavPath := filepath.Join(cacheDir, hashKey+".wav")
+	jsonPath := filepath.Join(cacheDir, hashKey+".json")
+
+	// Check cache
+	if _, err := os.Stat(wavPath); err == nil {
+		if _, err := os.Stat(jsonPath); err == nil {
+			wavBytes, rerr1 := os.ReadFile(wavPath)
+			jsonBytes, rerr2 := os.ReadFile(jsonPath)
+			if rerr1 == nil && rerr2 == nil {
+				var meta CachedMetadata
+				if json.Unmarshal(jsonBytes, &meta) == nil {
+					log.Printf("[TTS Cache] Hit for: %q (hash: %s)", text, hashKey)
+					return &TTSResult{
+						Audio:    wavBytes,
+						Timings:  meta.Timings,
+						Duration: meta.Duration,
+					}, nil
+				}
+			}
+		}
+	}
+
+	log.Printf("[TTS Cache] Miss for: %q (hash: %s)", text, hashKey)
+	res, err := c.SynthesizeWithTimingsRaw(text, speed, voice)
+	if err != nil {
+		return nil, err
+	}
+
+	// Save cache
+	if err := os.MkdirAll(cacheDir, 0755); err == nil {
+		_ = os.WriteFile(wavPath, res.Audio, 0644)
+		meta := CachedMetadata{
+			Timings:  res.Timings,
+			Duration: res.Duration,
+		}
+		if metaBytes, merr := json.Marshal(meta); merr == nil {
+			_ = os.WriteFile(jsonPath, metaBytes, 0644)
+		}
+	}
+
+	return res, nil
+}
+
+// SynthesizeWithTimingsRaw calls /tts?timestamps=1 and decodes the JSON envelope.
+// Falls back transparently to raw-WAV Synthesize() if the server returns audio/wav.
+func (c *TTSClient) SynthesizeWithTimingsRaw(text string, speed float64, voice string) (*TTSResult, error) {
 	reqBody, err := json.Marshal(ttsRequest{Text: text, Speed: speed, Voice: voice})
 	if err != nil {
 		return nil, fmt.Errorf("marshal error: %w", err)

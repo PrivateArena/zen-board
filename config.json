@@ -10,5 +10,6 @@
   "disable_transcript": true,
   "bgm_path": "music/mang_chung.wav",
   "bgm_volume": 0.45,
-  "camera_enabled": true
+  "camera_enabled": true,
+  "tts_cache_dir": "/tmp/zen-board/tts"
 }

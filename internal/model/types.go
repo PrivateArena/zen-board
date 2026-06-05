@@ -17,6 +17,7 @@ type Project struct {
 	BGMVolume         float64 `json:"bgm_volume"`
 	CameraEnabled     bool    `json:"camera_enabled"`
 	FreezeFrames      int     `json:"freeze_frames"`
+	TTSCacheDir       string  `json:"tts_cache_dir"`
 }
 
 func NewDefaultProject() *Project {
@@ -33,6 +34,7 @@ func NewDefaultProject() *Project {
 		Voice:        "am_adam",
 		BGMVolume:    0.05,
 		FreezeFrames: 60,
+		TTSCacheDir:  "/tmp/zen-board/tts",
 	}
 }
 

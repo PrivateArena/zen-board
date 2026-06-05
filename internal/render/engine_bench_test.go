@@ -129,13 +129,24 @@ func BenchmarkRenderFrameMove(b *testing.B) {
 	}
 }
 
-func BenchmarkCropAndScaleZoom(b *testing.B) {
+func BenchmarkCropAndScaleBilinear(b *testing.B) {
 	src := image.NewRGBA(image.Rect(0, 0, 1920, 1080))
 	cam := CameraState{X: 100, Y: 100, W: 960, H: 540} // Zoom state
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		dst := CropAndScale(src, cam, 1920, 1080)
+		dst := CropAndScale(src, cam, 1920, 1080, false)
+		_ = dst
+	}
+}
+
+func BenchmarkCropAndScaleNearestNeighbor(b *testing.B) {
+	src := image.NewRGBA(image.Rect(0, 0, 1920, 1080))
+	cam := CameraState{X: 100, Y: 100, W: 960, H: 540} // Zoom state
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		dst := CropAndScale(src, cam, 1920, 1080, true)
 		_ = dst
 	}
 }

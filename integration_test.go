@@ -216,3 +216,62 @@ All done.`
 		t.Errorf("Output file %s was not created", outputPath)
 	}
 }
+
+func TestIntegrationFastMode(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test in short mode")
+	}
+
+	// 1. Mock TTS Server
+	ts := testutil.NewMockTTSServer()
+	defer ts.Close()
+
+	// 2. Setup temporary workspace
+	tmpDir, err := os.MkdirTemp("", "zen-test-fast-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	scriptPath := filepath.Join(tmpDir, "test.zen")
+	dslScript := `[draw:test] Fast mode test.`
+	err = os.WriteFile(scriptPath, []byte(dslScript), 0644)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	outputPath := filepath.Join(tmpDir, "output.mp4")
+	assetsDir := filepath.Join(tmpDir, "assets")
+	os.Mkdir(assetsDir, 0755)
+	createDummyPNG(filepath.Join(assetsDir, "test.png"))
+	handPath := filepath.Join(tmpDir, "hand.png")
+	createDummyPNG(handPath)
+
+	// 3. Run the pipeline with -fast
+	oldArgs := os.Args
+	defer func() { os.Args = oldArgs }()
+
+	os.Args = []string{
+		"zen-board",
+		"-script", scriptPath,
+		"-o", outputPath,
+		"-tts", ts.URL,
+		"-assets", assetsDir,
+		"-hand", handPath,
+		"-fps", "10",
+		"-w", "100",
+		"-h", "100",
+		"-fast",
+	}
+
+	err = Run()
+	if err != nil {
+		t.Fatalf("Run() failed in Fast Mode: %v", err)
+	}
+
+	// 4. Verify output exists
+	if _, err := os.Stat(outputPath); os.IsNotExist(err) {
+		t.Errorf("Output file %s was not created in Fast Mode", outputPath)
+	}
+}
+

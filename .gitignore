@@ -59,4 +59,5 @@ node_modules/
 *.mp4
 *.jpg
 *.jpeg
+.tts_cache/
 
