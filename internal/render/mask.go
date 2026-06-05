@@ -116,22 +116,36 @@ func GetFrontierPoint(width, height int, progress float64, style string, config 
 		y = int(fH/2 + sweep)
 
 	} else if style == "diagonal" {
-		// Hand sits on the actual diagonal mask boundary by solving for y given oscillating x.
-		// Frontier: x/W + y/H = 2*progress + Amplitude*2*sin(2π*(x-y)/Wavelength)
-		//
-		// Choose x oscillating across the image (1.5 cycles)
-		numCycles := 1.5
-		oscFrac := 0.5 + 0.4*math.Sin(2*math.Pi*progress*numCycles)
-		hx := oscFrac * fW
+		// Parameterize the diagonal frontier line segment inside the image boundaries.
+		// For a given progress, the line is: x/W + y/H = 2 * progress
+		// Let p1 be the intersection with the left or bottom edge, and p2 with the top or right edge.
+		var p1x, p1y, p2x, p2y float64
+		if progress < 0.5 {
+			p1x = 0
+			p1y = 2.0 * progress * fH
+			p2x = 2.0 * progress * fW
+			p2y = 0
+		} else {
+			p1x = (2.0*progress - 1.0) * fW
+			p1y = fH
+			p2x = fW
+			p2y = (2.0*progress - 1.0) * fH
+		}
 
-		// First-order approximation: ignore sine for initial hy estimate.
-		hy0 := (2*progress - hx/fW) * fH
-		// Refine: compute sine offset at (hx, hy0) and solve.
-		t := hx - hy0
+		// Oscillate the parameter u along the frontier line to produce a zigzag motion.
+		numCycles := 3.0
+		u := 0.5 + 0.5*math.Sin(2*math.Pi*progress*numCycles)
+
+		// Interpolated base coordinates
+		xs := (1.0-u)*p1x + u*p2x
+		ys := (1.0-u)*p1y + u*p2y
+
+		// Refine y with the wobbly sine offset to match the generated mask's actual boundary.
+		t := xs - ys
 		sineOffset := config.Amplitude * 2.0 * math.Sin(2*math.Pi*t/config.Wavelength)
-		hy := (2*progress + sineOffset - hx/fW) * fH
+		hy := (2.0*progress + sineOffset - xs/fW) * fH
 
-		x = int(hx)
+		x = int(xs)
 		y = int(hy)
 
 	} else {
