@@ -110,10 +110,12 @@ func GetFrontierPoint(width, height int, progress float64, style string, config 
 	if style == "ltr" {
 		// Hand tracks the vertical-center of the LTR sweep band with a gentle vertical oscillation.
 		bandX := progress*1.2*fW - 0.1*fW
-		x = int(math.Max(0, math.Min(fW-1, bandX)))
 		// Gentle vertical sweep: 1 cycle across progress
 		sweep := fH * 0.35 * math.Sin(2*math.Pi*progress*1.0)
 		y = int(fH/2 + sweep)
+		// Include the horizontal sine wobble of the mask boundary at this vertical position
+		wobbleX := bandX + config.Amplitude*fW*math.Sin(2*math.Pi*float64(y)/config.Wavelength)
+		x = int(math.Max(0, math.Min(fW-1, wobbleX)))
 
 	} else if style == "diagonal" {
 		// Parameterize the diagonal frontier line segment inside the image boundaries.
@@ -141,9 +143,14 @@ func GetFrontierPoint(width, height int, progress float64, style string, config 
 		ys := (1.0-u)*p1y + u*p2y
 
 		// Refine y with the wobbly sine offset to match the generated mask's actual boundary.
-		t := xs - ys
-		sineOffset := config.Amplitude * 2.0 * math.Sin(2*math.Pi*t/config.Wavelength)
-		hy := (2.0*progress + sineOffset - xs/fW) * fH
+		// Solve the transcendental equation: hy = ys + Amplitude * 2 * sin(2*pi*(xs-hy)/Wavelength) * fH
+		// using fixed-point iteration (converges to sub-pixel accuracy within 5 steps).
+		hy := ys
+		for iter := 0; iter < 5; iter++ {
+			t := xs - hy
+			sineOffset := config.Amplitude * 2.0 * math.Sin(2*math.Pi*t/config.Wavelength)
+			hy = ys + sineOffset*fH
+		}
 
 		x = int(xs)
 		y = int(hy)
@@ -151,10 +158,12 @@ func GetFrontierPoint(width, height int, progress float64, style string, config 
 	} else {
 		// "ttb": hand tracks the actual bandY position with a gentle horizontal sweep.
 		bandY := progress*1.2*fH - 0.1*fH
-		y = int(math.Max(0, math.Min(fH-1, bandY)))
 		// Gentle x sweep: 1 cycle, covers 60% of width
 		sweep := fW * 0.30 * math.Sin(2*math.Pi*progress*1.0)
 		x = int(fW/2 + sweep)
+		// Include the vertical sine wobble of the mask boundary at this horizontal position
+		wobbleY := bandY + config.Amplitude*fH*math.Sin(2*math.Pi*float64(x)/config.Wavelength)
+		y = int(math.Max(0, math.Min(fH-1, wobbleY)))
 	}
 
 	if x < 0 {

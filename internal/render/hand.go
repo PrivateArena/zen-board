@@ -29,7 +29,7 @@ type HandRenderer struct {
 	TipY     int
 }
 
-func NewHandRenderer(path string) (*HandRenderer, error) {
+func NewHandRenderer(path string, origTipX, origTipY int) (*HandRenderer, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
@@ -40,6 +40,9 @@ func NewHandRenderer(path string) (*HandRenderer, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	origW := img.Bounds().Dx()
+	origH := img.Bounds().Dy()
 
 	scaledImg := scaleImage(img, 256, 256)
 	sprites := map[string]image.Image{
@@ -57,7 +60,14 @@ func NewHandRenderer(path string) (*HandRenderer, error) {
 		}
 	}
 
-	hr := &HandRenderer{Sprites: sprites}
+	scaledTipX := int(math.Round(float64(origTipX) * 256.0 / float64(origW)))
+	scaledTipY := int(math.Round(float64(origTipY) * 256.0 / float64(origH)))
+
+	hr := &HandRenderer{
+		Sprites:  sprites,
+		TipX:     scaledTipX,
+		TipY:     scaledTipY,
+	}
 	hr.buildRotCache()
 	return hr, nil
 }

@@ -191,12 +191,7 @@ func Run() error {
 	}
 
 	// 6. Preparing Engine & Assets
-	tipX, tipY := conf.HandTipX, conf.HandTipY
-	if tipX == 30 && tipY == 20 {
-		tipX = 219
-		tipY = 130
-	}
-	engine, err := render.NewEngine(conf.Width, conf.Height, conf.FPS, *handPath, tipX, tipY)
+	engine, err := render.NewEngine(conf.Width, conf.Height, conf.FPS, *handPath, conf.HandTipX, conf.HandTipY)
 	if err != nil {
 		return fmt.Errorf("engine: %w", err)
 	}

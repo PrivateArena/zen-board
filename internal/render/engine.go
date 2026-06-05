@@ -29,12 +29,10 @@ type Engine struct {
 }
 
 func NewEngine(w, h, fps int, handPath string, tipX, tipY int) (*Engine, error) {
-	hr, err := NewHandRenderer(handPath)
+	hr, err := NewHandRenderer(handPath, tipX, tipY)
 	if err != nil {
 		return nil, err
 	}
-	hr.TipX = tipX
-	hr.TipY = tipY
 
 	return &Engine{
 		Width:        w,
