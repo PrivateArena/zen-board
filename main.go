@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"zen-board/internal/assets"
 	"zen-board/internal/builder"
@@ -123,10 +124,13 @@ func Run() error {
 
 	// 2. TTS & Timing
 	client := tts.NewClient(conf.TTSAddr)
+	tTtsStart := time.Now()
 	finalAudio, allWordTimings, pLines, err := tts.OrchestrateTTS(client, lines, *speed, conf.Voice)
 	if err != nil {
 		return err
 	}
+	ttsDuration := time.Since(tTtsStart)
+
 
 	// Derive authoritative duration from the actual concatenated WAV
 	exactDuration, err := tts.GetWAVDuration(finalAudio)
@@ -213,5 +217,10 @@ func Run() error {
 	}
 
 	// 8. Render & encode
-	return builder.RenderTimeline(conf, comp.Timeline, engine, pipe, comp.StyleKeyframes, pLines, *cameraEnabled)
+	err = builder.RenderTimeline(conf, comp.Timeline, engine, pipe, comp.StyleKeyframes, pLines, *cameraEnabled)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("Total TTS & Timing synthesis: %v\n", ttsDuration)
+	return nil
 }

@@ -5,6 +5,7 @@ import (
 	"image"
 	"sort"
 	"strings"
+	"time"
 	"zen-board/internal/ffmpeg"
 	"zen-board/internal/model"
 	"zen-board/internal/render"
@@ -99,6 +100,9 @@ func RenderTimeline(conf *model.Project, timeline *model.Timeline, engine *rende
 		styleStates[f] = currentStyleState
 	}
 
+	tTimelineStart := time.Now()
+	var pipeWriteTime time.Duration
+
 	engine.StartWorkers()
 
 	// Limit to at most 120 frames in-flight (uncompressed RGBA in memory)
@@ -135,7 +139,9 @@ func RenderTimeline(conf *model.Project, timeline *model.Timeline, engine *rende
 				break
 			}
 
+			tPipeStart := time.Now()
 			err := pipe.WriteFrame(frame.Pix)
+			pipeWriteTime += time.Since(tPipeStart)
 			if err != nil {
 				return fmt.Errorf("pipe write: %w", err)
 			}
@@ -155,5 +161,8 @@ func RenderTimeline(conf *model.Project, timeline *model.Timeline, engine *rende
 	pipe.Close()
 
 	fmt.Printf("Done! Video saved to %s\n", conf.OutputPath)
+	fmt.Printf("Total rendering execution: %v\n", time.Since(tTimelineStart))
+	fmt.Printf("Total time writing to FFmpeg pipe: %v\n", pipeWriteTime)
+	engine.PrintStats()
 	return nil
 }

@@ -9,6 +9,8 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"sync/atomic"
+	"time"
 
 	_ "image/jpeg"
 	_ "image/png"
@@ -18,6 +20,19 @@ import (
 	xdraw "golang.org/x/image/draw"
 )
 
+type RenderStats struct {
+	TotalFrames     int64
+	ClearBgTime     int64 // in nanoseconds
+	InvertColorTime int64
+	ScaleAssetTime  int64
+	MaskGenTime     int64
+	FrontierTime    int64
+	DrawMaskTime    int64
+	DrawHandTime    int64
+	CropScaleTime   int64
+	TotalRenderTime int64
+}
+
 type Engine struct {
 	Width, Height int
 	FPS           int
@@ -26,6 +41,7 @@ type Engine struct {
 	Assets        map[string]image.Image
 	ScaledAssets  map[string]image.Image
 	AssetMu       sync.RWMutex
+	Stats         RenderStats
 }
 
 func NewEngine(w, h, fps int, handPath string, tipX, tipY int) (*Engine, error) {
@@ -59,6 +75,33 @@ func (e *Engine) StartWorkers() {
 	}
 }
 
+func (e *Engine) PrintStats() {
+	frames := atomic.LoadInt64(&e.Stats.TotalFrames)
+	if frames == 0 {
+		return
+	}
+	fmt.Printf("\n=== Render Timing Stats (Total Frames: %d) ===\n", frames)
+	printStat := func(label string, ns int64) {
+		dur := time.Duration(ns)
+		avg := time.Duration(ns / frames)
+		pct := 0.0
+		totalNs := atomic.LoadInt64(&e.Stats.TotalRenderTime)
+		if totalNs > 0 {
+			pct = float64(ns) * 100.0 / float64(totalNs)
+		}
+		fmt.Printf("- %-18s: %10s (avg %8s/frame, %5.1f%%)\n", label, dur, avg, pct)
+	}
+	printStat("Clear Bg", atomic.LoadInt64(&e.Stats.ClearBgTime))
+	printStat("Invert Color", atomic.LoadInt64(&e.Stats.InvertColorTime))
+	printStat("Scale Asset", atomic.LoadInt64(&e.Stats.ScaleAssetTime))
+	printStat("Mask Generation", atomic.LoadInt64(&e.Stats.MaskGenTime))
+	printStat("Frontier Point", atomic.LoadInt64(&e.Stats.FrontierTime))
+	printStat("Draw Mask/Img", atomic.LoadInt64(&e.Stats.DrawMaskTime))
+	printStat("Draw Hand", atomic.LoadInt64(&e.Stats.DrawHandTime))
+	printStat("Crop & Scale", atomic.LoadInt64(&e.Stats.CropScaleTime))
+	printStat("Total Render", atomic.LoadInt64(&e.Stats.TotalRenderTime))
+}
+
 func (e *Engine) LoadAsset(name, path string) error {
 	f, err := os.Open(path)
 	if err != nil {
@@ -85,9 +128,11 @@ func (e *Engine) RegisterAsset(name string, img image.Image) {
 
 // RenderFrame generates a single frame based on the active events.
 func (e *Engine) RenderFrame(frameNum int, events []model.FrameEvent, cam CameraState, style string) *image.RGBA {
+	t0 := time.Now()
 	buf := e.Pool.BufferPool.Get().(*image.RGBA)
 
 	// 1. Clear with appropriate background color
+	tBgStart := time.Now()
 	var bg image.Image
 	switch style {
 	case "blackboard":
@@ -98,6 +143,7 @@ func (e *Engine) RenderFrame(frameNum int, events []model.FrameEvent, cam Camera
 		bg = image.NewUniform(image.White)
 	}
 	draw.Draw(buf, buf.Bounds(), bg, image.Point{}, draw.Src)
+	tClearBg := time.Since(tBgStart)
 
 	var activeHandX, activeHandY int
 	var handVisible bool
@@ -105,6 +151,12 @@ func (e *Engine) RenderFrame(frameNum int, events []model.FrameEvent, cam Camera
 	var activeHandAngle int = 0
 
 	maskCfg := DefaultMaskConfig()
+
+	var localInvertColorTime time.Duration
+	var localScaleAssetTime time.Duration
+	var localMaskGenTime time.Duration
+	var localFrontierTime time.Duration
+	var localDrawMaskTime time.Duration
 
 	for _, ev := range events {
 		if frameNum < ev.StartFrame || frameNum > ev.EndFrame {
@@ -164,7 +216,9 @@ func (e *Engine) RenderFrame(frameNum int, events []model.FrameEvent, cam Camera
 			if ok {
 				img = invImg
 			} else {
+				tInvertStart := time.Now()
 				invImg = invertImageColors(img)
+				localInvertColorTime += time.Since(tInvertStart)
 				e.AssetMu.Lock()
 				e.Assets[key] = invImg
 				e.AssetMu.Unlock()
@@ -208,7 +262,9 @@ func (e *Engine) RenderFrame(frameNum int, events []model.FrameEvent, cam Camera
 				img = scaledImg
 			} else {
 				// Scale and cache
+				tScaleStart := time.Now()
 				scaledImg = scaleImage(img, renderW, renderH)
+				localScaleAssetTime += time.Since(tScaleStart)
 				e.AssetMu.Lock()
 				e.ScaledAssets[key] = scaledImg
 				e.AssetMu.Unlock()
@@ -236,12 +292,14 @@ func (e *Engine) RenderFrame(frameNum int, events []model.FrameEvent, cam Camera
 		destRect := image.Rect(renderX, renderY, renderX+img.Bounds().Dx(), renderY+img.Bounds().Dy())
 
 		if ev.EventType == "static" {
+			tDrawStart := time.Now()
 			if visibility >= 1.0 {
 				draw.Draw(buf, destRect, img, image.Point{}, draw.Over)
 			} else {
 				maskUniform := image.NewUniform(color.Alpha{A: uint8(visibility * 255)})
 				draw.DrawMask(buf, destRect, img, image.Point{}, maskUniform, image.Point{}, draw.Over)
 			}
+			localDrawMaskTime += time.Since(tDrawStart)
 			continue
 		}
 
@@ -254,12 +312,14 @@ func (e *Engine) RenderFrame(frameNum int, events []model.FrameEvent, cam Camera
 			curX := ev.X + int(float64(ev.DestX-ev.X)*easedT)
 			curY := ev.Y + int(float64(ev.DestY-ev.Y)*easedT)
 			destRect = image.Rect(curX, curY, curX+renderW, curY+renderH)
+			tDrawStart := time.Now()
 			if visibility >= 1.0 {
 				draw.Draw(buf, destRect, img, image.Point{}, draw.Over)
 			} else {
 				maskUniform := image.NewUniform(color.Alpha{A: uint8(visibility * 255)})
 				draw.DrawMask(buf, destRect, img, image.Point{}, maskUniform, image.Point{}, draw.Over)
 			}
+			localDrawMaskTime += time.Since(tDrawStart)
 
 			dx := ev.DestX - ev.X
 			dy := ev.DestY - ev.Y
@@ -280,8 +340,12 @@ func (e *Engine) RenderFrame(frameNum int, events []model.FrameEvent, cam Camera
 			if dx != 0 || dy != 0 {
 				angRad := math.Atan2(float64(dy), float64(dx))
 				ang := int(angRad * 180 / math.Pi)
-				if ang > 25 { ang = 25 }
-				if ang < -25 { ang = -25 }
+				if ang > 25 {
+					ang = 25
+				}
+				if ang < -25 {
+					ang = -25
+				}
 				activeHandAngle = ang
 			}
 			handVisible = true
@@ -297,7 +361,11 @@ func (e *Engine) RenderFrame(frameNum int, events []model.FrameEvent, cam Camera
 			if easedProgress >= 1.0 {
 				continue
 			}
+			tMaskStart := time.Now()
 			mask := GenerateMask(img.Bounds().Dx(), img.Bounds().Dy(), easedProgress, ev.MaskStyle, maskCfg)
+			localMaskGenTime += time.Since(tMaskStart)
+
+			tDrawStart := time.Now()
 			for i := range mask.Pix {
 				mask.Pix[i] = 255 - mask.Pix[i]
 			}
@@ -313,8 +381,12 @@ func (e *Engine) RenderFrame(frameNum int, events []model.FrameEvent, cam Camera
 				}
 			}
 			draw.DrawMask(buf, destRect, img, image.Point{}, mask, image.Point{}, draw.Over)
+			localDrawMaskTime += time.Since(tDrawStart)
 
+			tFrontierStart := time.Now()
 			fx, fy := GetFrontierPoint(img.Bounds().Dx(), img.Bounds().Dy(), easedProgress, ev.MaskStyle, maskCfg)
+			localFrontierTime += time.Since(tFrontierStart)
+
 			activeHandX = renderX + fx
 			activeHandY = renderY + fy
 			activeHandAngle = 0
@@ -328,14 +400,20 @@ func (e *Engine) RenderFrame(frameNum int, events []model.FrameEvent, cam Camera
 		}
 
 		if easedProgress >= 1.0 {
+			tDrawStart := time.Now()
 			if visibility >= 1.0 {
 				draw.Draw(buf, destRect, img, image.Point{}, draw.Over)
 			} else {
 				maskUniform := image.NewUniform(color.Alpha{A: uint8(visibility * 255)})
 				draw.DrawMask(buf, destRect, img, image.Point{}, maskUniform, image.Point{}, draw.Over)
 			}
+			localDrawMaskTime += time.Since(tDrawStart)
 		} else {
+			tMaskStart := time.Now()
 			mask := GenerateMask(img.Bounds().Dx(), img.Bounds().Dy(), easedProgress, ev.MaskStyle, maskCfg)
+			localMaskGenTime += time.Since(tMaskStart)
+
+			tDrawStart := time.Now()
 			if easedProgress >= 0.9 {
 				factor := (easedProgress - 0.9) / 0.1
 				for i := range mask.Pix {
@@ -349,8 +427,12 @@ func (e *Engine) RenderFrame(frameNum int, events []model.FrameEvent, cam Camera
 				}
 			}
 			draw.DrawMask(buf, destRect, img, image.Point{}, mask, image.Point{}, draw.Over)
+			localDrawMaskTime += time.Since(tDrawStart)
 
+			tFrontierStart := time.Now()
 			fx, fy := GetFrontierPoint(img.Bounds().Dx(), img.Bounds().Dy(), easedProgress, ev.MaskStyle, maskCfg)
+			localFrontierTime += time.Since(tFrontierStart)
+
 			activeHandX = renderX + fx
 			activeHandY = renderY + fy
 			// Angle by mask style: diagonal tilts 15°, ltr tilts -10°, ttb is flat
@@ -372,15 +454,34 @@ func (e *Engine) RenderFrame(frameNum int, events []model.FrameEvent, cam Camera
 	}
 
 	// 3. Draw Hand
+	var localDrawHandTime time.Duration
 	if handVisible {
+		tHandStart := time.Now()
 		e.Hand.Draw(buf, activeHandX, activeHandY, frameNum, activeHandStyle, activeHandAngle)
+		localDrawHandTime = time.Since(tHandStart)
 	}
 
 	// 4. Crop and Scale relative to CameraState
+	tCropScaleStart := time.Now()
 	finalFrame := CropAndScale(buf, cam, e.Width, e.Height)
 	if finalFrame != buf {
 		e.Pool.BufferPool.Put(buf)
 	}
+	localCropScaleTime := time.Since(tCropScaleStart)
+
+	// Add to global stats atomically
+	atomic.AddInt64(&e.Stats.ClearBgTime, int64(tClearBg))
+	atomic.AddInt64(&e.Stats.InvertColorTime, int64(localInvertColorTime))
+	atomic.AddInt64(&e.Stats.ScaleAssetTime, int64(localScaleAssetTime))
+	atomic.AddInt64(&e.Stats.MaskGenTime, int64(localMaskGenTime))
+	atomic.AddInt64(&e.Stats.FrontierTime, int64(localFrontierTime))
+	atomic.AddInt64(&e.Stats.DrawMaskTime, int64(localDrawMaskTime))
+	atomic.AddInt64(&e.Stats.DrawHandTime, int64(localDrawHandTime))
+	atomic.AddInt64(&e.Stats.CropScaleTime, int64(localCropScaleTime))
+	atomic.AddInt64(&e.Stats.TotalFrames, 1)
+
+	tTotal := time.Since(t0)
+	atomic.AddInt64(&e.Stats.TotalRenderTime, int64(tTotal))
 
 	return finalFrame
 }
