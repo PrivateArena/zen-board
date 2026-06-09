@@ -6,7 +6,7 @@
   "assets_dir": "./assets",
   "output_path": "output.mp4",
   "speed": 1.0,
-  "voice": "af_bella",
+  "voice": "en_US-ryan-medium",
   "disable_transcript": true,
   "bgm_path": "music/mang_chung.wav",
   "bgm_volume": 0.45,
