@@ -66,11 +66,14 @@ type FrameEvent struct {
 	EndFrame      int
 	X, Y          int     // Position on canvas
 	Width, Height int     // Render dimensions
-	EventType     string  // "draw", "erase", "move", "text", "static"
+	EventType     string  // "draw", "erase", "move", "text", "static", "slide", "lower3rd", "overlay"
 	MaskStyle     string  // "diagonal", "ltr", "ttb"
 	HandStyle     string  // "pencil", "chalk", "eraser", "marker"
 	DestX, DestY  int     // destination for "move" events
 	ZoomFocus     string  `json:"zoom_focus"`
+	// Slide-specific fields
+	Transition string  // "none","fade","pop","slide-left","slide-right","slide-up","slide-down"
+	FitMode    string  // "fit","fill","stretch"
 }
 
 type SubtitleEvent struct {

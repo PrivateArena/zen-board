@@ -20,6 +20,8 @@ var (
 	chapterRegex  = regexp.MustCompile(`\[chapter:([^\]]+)\]`)
 	sfxRegex      = regexp.MustCompile(`\[sfx:([^\]]+)\]`)
 	subtitleRegex = regexp.MustCompile(`\[subtitle:([^\]]+)\]`)
+	slideRegex    = regexp.MustCompile(`^\[slide:([^:]+)(?::([^:\]]+))?(?::([^\]]+))?\]$`)
+	lower3rdRegex = regexp.MustCompile(`^\[lower3rd:([^\]]+)\]$`)
 )
 
 func Parse(input string) []model.ScriptLine {
@@ -42,9 +44,36 @@ func Parse(input string) []model.ScriptLine {
 	return result
 }
 
+func parseQuotedStringParts(s string) []string {
+	var parts []string
+	var current strings.Builder
+	inQuote := false
+	for _, ch := range s {
+		if ch == '"' {
+			inQuote = !inQuote
+			current.WriteRune(ch)
+		} else if ch == ':' && !inQuote {
+			parts = append(parts, current.String())
+			current.Reset()
+		} else {
+			current.WriteRune(ch)
+		}
+	}
+	parts = append(parts, current.String())
+	return parts
+}
+
+func unquote(s string) string {
+	s = strings.TrimSpace(s)
+	if len(s) >= 2 && s[0] == '"' && s[len(s)-1] == '"' {
+		return s[1 : len(s)-1]
+	}
+	return s
+}
+
 func extractActions(line string) (string, []model.DrawAction) {
 	var actions []model.DrawAction
-	
+
 	type tagInfo struct {
 		start, end int
 		tag        string
@@ -52,11 +81,11 @@ func extractActions(line string) (string, []model.DrawAction) {
 		waitVal    float64
 		x, y, w, h int
 	}
-	
+
 	var tags []tagInfo
 	cleanBuilder := strings.Builder{}
 	lastPos := 0
-	
+
 	extractStandardTag := func(re *regexp.Regexp, prefix string) {
 		matches := re.FindAllStringSubmatchIndex(line, -1)
 		for _, m := range matches {
@@ -91,24 +120,55 @@ func extractActions(line string) (string, []model.DrawAction) {
 	extractStandardTag(moveRegex, "move:")
 	extractStandardTag(genRegex, "gen:")
 
+	slideMatches := slideRegex.FindAllStringSubmatchIndex(line, -1)
+	for _, m := range slideMatches {
+		asset := line[m[2]:m[3]]
+		preset := ""
+		if m[4] != -1 && m[5] != -1 {
+			preset = line[m[4]:m[5]]
+		}
+		transition := "none"
+		if m[6] != -1 && m[7] != -1 {
+			transition = line[m[6]:m[7]]
+		}
+		tag := "slide:" + asset
+		if preset != "" {
+			tag += ":" + preset
+		}
+		if transition != "" && transition != "none" {
+			tag += ":" + transition
+		}
+		tags = append(tags, tagInfo{start: m[0], end: m[1], tag: tag})
+	}
+
+	lower3rdMatches := lower3rdRegex.FindAllStringSubmatchIndex(line, -1)
+	for _, m := range lower3rdMatches {
+		rawContent := line[m[2]:m[3]]
+		parts := parseQuotedStringParts(rawContent)
+		tag := "lower3rd"
+		for _, p := range parts {
+			tag += ":" + p
+		}
+		tags = append(tags, tagInfo{start: m[0], end: m[1], tag: tag})
+	}
+
 	extractSimpleTag(zoomRegex, "zoom:")
 	extractSimpleTag(styleRegex, "style:")
 	extractSimpleTag(chapterRegex, "chapter:")
 	extractSimpleTag(sfxRegex, "sfx:")
 	extractSimpleTag(subtitleRegex, "subtitle:")
-	
+
 	waitMatches := waitRegex.FindAllStringSubmatchIndex(line, -1)
 	for _, m := range waitMatches {
 		val, _ := strconv.ParseFloat(line[m[2]:m[3]], 64)
 		tags = append(tags, tagInfo{start: m[0], end: m[1], isWait: true, waitVal: val})
 	}
-	
+
 	clearMatches := clearRegex.FindAllStringSubmatchIndex(line, -1)
 	for _, m := range clearMatches {
 		tags = append(tags, tagInfo{start: m[0], end: m[1], tag: "clear"})
 	}
-	
-	// Sort tags by start position
+
 	for i := 0; i < len(tags); i++ {
 		for j := i + 1; j < len(tags); j++ {
 			if tags[i].start > tags[j].start {
@@ -119,11 +179,10 @@ func extractActions(line string) (string, []model.DrawAction) {
 
 	for _, t := range tags {
 		cleanBuilder.WriteString(line[lastPos:t.start])
-		
-		// Calculate word index in the clean text built so far
+
 		currentClean := cleanBuilder.String()
 		wordCount := len(strings.Fields(currentClean))
-		
+
 		if t.isWait {
 			actions = append(actions, model.DrawAction{
 				Tag:              "WAIT:" + strconv.FormatFloat(t.waitVal, 'f', -1, 64),
@@ -147,12 +206,11 @@ func extractActions(line string) (string, []model.DrawAction) {
 				TriggerAfterWord: triggerAfter,
 			})
 		}
-		
+
 		lastPos = t.end
 	}
 	cleanBuilder.WriteString(line[lastPos:])
-	
-	// Normalize spaces
+
 	cleanText := cleanBuilder.String()
 	words := strings.Fields(cleanText)
 	return strings.Join(words, " "), actions

@@ -132,7 +132,6 @@ func (e *Engine) RenderFrame(frameNum int, events []model.FrameEvent, cam Camera
 	t0 := time.Now()
 	buf := e.Pool.BufferPool.Get().(*image.RGBA)
 
-	// 1. Clear with appropriate background color
 	tBgStart := time.Now()
 	var bg image.Image
 	switch style {
@@ -158,13 +157,16 @@ func (e *Engine) RenderFrame(frameNum int, events []model.FrameEvent, cam Camera
 	var localMaskGenTime time.Duration
 	var localFrontierTime time.Duration
 	var localDrawMaskTime time.Duration
+	var localDrawHandTime time.Duration
+	var localCropScaleTime time.Duration
+
+	slideAnimFrames := int(0.18 * float64(e.FPS))
 
 	for _, ev := range events {
 		if frameNum < ev.StartFrame || frameNum > ev.EndFrame {
 			continue
 		}
 
-		// Determine visibility of the event in the current camera state
 		evFocus := ev.ZoomFocus
 		if evFocus == "" {
 			evFocus = "reset"
@@ -201,6 +203,16 @@ func (e *Engine) RenderFrame(frameNum int, events []model.FrameEvent, cam Camera
 			continue
 		}
 
+		if ev.EventType == "slide" {
+			handleSlideEvent(e, frameNum, ev, buf, visibility, slideAnimFrames, cam)
+			continue
+		}
+
+		if ev.EventType == "lower3rd" {
+			handleLower3rdEvent(e, frameNum, ev, buf, cam)
+			continue
+		}
+
 		e.AssetMu.RLock()
 		img, ok := e.Assets[ev.TargetImage]
 		e.AssetMu.RUnlock()
@@ -208,7 +220,6 @@ func (e *Engine) RenderFrame(frameNum int, events []model.FrameEvent, cam Camera
 			continue
 		}
 
-		// Invert colors if blackboard style and not text
 		if style == "blackboard" && !strings.HasPrefix(ev.TargetImage, "__text_") {
 			key := ev.TargetImage + "_inverted"
 			e.AssetMu.RLock()
@@ -250,7 +261,6 @@ func (e *Engine) RenderFrame(frameNum int, events []model.FrameEvent, cam Camera
 				}
 			}
 
-			// Center the scaled image inside the bounding box of ev.X, ev.Y, ev.Width, ev.Height
 			renderX = ev.X + (ev.Width-renderW)/2
 			renderY = ev.Y + (ev.Height-renderH)/2
 
@@ -262,7 +272,6 @@ func (e *Engine) RenderFrame(frameNum int, events []model.FrameEvent, cam Camera
 			if ok {
 				img = scaledImg
 			} else {
-				// Scale and cache
 				tScaleStart := time.Now()
 				scaledImg = scaleImage(img, renderW, renderH)
 				localScaleAssetTime += time.Since(tScaleStart)
@@ -287,7 +296,6 @@ func (e *Engine) RenderFrame(frameNum int, events []model.FrameEvent, cam Camera
 				progress = 1.0
 			}
 		}
-		// Smooth-step easing: slow start, fast middle, slow stop — matches human drawing rhythm.
 		easedProgress := progress * progress * (3 - 2*progress)
 
 		destRect := image.Rect(renderX, renderY, renderX+img.Bounds().Dx(), renderY+img.Bounds().Dy())
@@ -337,7 +345,6 @@ func (e *Engine) RenderFrame(frameNum int, events []model.FrameEvent, cam Camera
 			}
 			activeHandX = curX + renderW/2 + handOffX
 			activeHandY = curY + renderH/2 + handOffY
-			// Angle from movement direction (capped ±25°)
 			if dx != 0 || dy != 0 {
 				angRad := math.Atan2(float64(dy), float64(dx))
 				ang := int(angRad * 180 / math.Pi)
@@ -436,7 +443,6 @@ func (e *Engine) RenderFrame(frameNum int, events []model.FrameEvent, cam Camera
 
 			activeHandX = renderX + fx
 			activeHandY = renderY + fy
-			// Angle by mask style: diagonal tilts 15°, ltr tilts -10°, ttb is flat
 			switch ev.MaskStyle {
 			case "diagonal":
 				activeHandAngle = 15
@@ -454,23 +460,19 @@ func (e *Engine) RenderFrame(frameNum int, events []model.FrameEvent, cam Camera
 		}
 	}
 
-	// 3. Draw Hand
-	var localDrawHandTime time.Duration
 	if handVisible {
 		tHandStart := time.Now()
 		e.Hand.Draw(buf, activeHandX, activeHandY, frameNum, activeHandStyle, activeHandAngle)
 		localDrawHandTime = time.Since(tHandStart)
 	}
 
-	// 4. Crop and Scale relative to CameraState
 	tCropScaleStart := time.Now()
 	finalFrame := CropAndScale(buf, cam, e.Width, e.Height, e.FastMode)
 	if finalFrame != buf {
 		e.Pool.BufferPool.Put(buf)
 	}
-	localCropScaleTime := time.Since(tCropScaleStart)
+	localCropScaleTime = time.Since(tCropScaleStart)
 
-	// Add to global stats atomically
 	atomic.AddInt64(&e.Stats.ClearBgTime, int64(tClearBg))
 	atomic.AddInt64(&e.Stats.InvertColorTime, int64(localInvertColorTime))
 	atomic.AddInt64(&e.Stats.ScaleAssetTime, int64(localScaleAssetTime))
@@ -485,6 +487,243 @@ func (e *Engine) RenderFrame(frameNum int, events []model.FrameEvent, cam Camera
 	atomic.AddInt64(&e.Stats.TotalRenderTime, int64(tTotal))
 
 	return finalFrame
+}
+
+func handleSlideEvent(e *Engine, frameNum int, ev model.FrameEvent, buf *image.RGBA, visibility float64, animFrames int, cam CameraState) {
+	e.AssetMu.RLock()
+	img, ok := e.Assets[ev.TargetImage]
+	e.AssetMu.RUnlock()
+	if !ok {
+		return
+	}
+
+	renderW, renderH, renderX, renderY := ev.Width, ev.Height, ev.X, ev.Y
+	if ev.FitMode == "" {
+		ev.FitMode = "fit"
+	}
+
+	rawW, rawH := img.Bounds().Dx(), img.Bounds().Dy()
+	ratioSrc := float64(rawW) / float64(rawH)
+	ratioTarget := float64(ev.Width) / float64(ev.Height)
+
+	if ev.FitMode == "fill" {
+		if ratioSrc > ratioTarget {
+			renderH = ev.Height
+			renderW = int(float64(ev.Height) * ratioSrc)
+		} else {
+			renderW = ev.Width
+			renderH = int(float64(ev.Width) / ratioSrc)
+		}
+	} else if ev.FitMode == "stretch" {
+		renderW = ev.Width
+		renderH = ev.Height
+	} else {
+		if ratioSrc > ratioTarget {
+			renderW = ev.Width
+			renderH = int(float64(ev.Width) / ratioSrc)
+			if renderH <= 0 {
+				renderH = 1
+			}
+		} else {
+			renderH = ev.Height
+			renderW = int(float64(ev.Height) * ratioSrc)
+			if renderW <= 0 {
+				renderW = 1
+			}
+		}
+	}
+
+	renderX = ev.X + (ev.Width-renderW)/2
+	renderY = ev.Y + (ev.Height-renderH)/2
+
+	progress := float64(frameNum-ev.StartFrame) / float64(ev.EndFrame-ev.StartFrame)
+	if progress > 1.0 {
+		progress = 1.0
+	}
+
+	locX := renderX
+	locY := renderY
+	drawW := renderW
+	drawH := renderH
+	alpha := visibility
+
+	transition := ev.Transition
+	if transition == "" {
+		transition = "none"
+	}
+
+	animWindow := animFrames
+	if animWindow <= 0 {
+		animWindow = 1
+	}
+
+	if progress < float64(animWindow)/float64(ev.EndFrame-ev.StartFrame+1) && transition != "none" {
+		frameProgress := progress * float64(ev.EndFrame-ev.StartFrame+1) / float64(animWindow)
+		if frameProgress > 1.0 {
+			frameProgress = 1.0
+		}
+		easedFrameProgress := frameProgress * frameProgress * (3 - 2*frameProgress)
+
+		switch transition {
+		case "fade":
+			alpha = easedFrameProgress * visibility
+		case "pop":
+			pf := 1.0 + 0.33*(1.0-easedFrameProgress)
+			drawW = int(float64(renderW) * pf)
+			drawH = int(float64(renderH) * pf)
+			locX = renderX - (drawW-renderW)/2
+			locY = renderY - (drawH-renderH)/2
+			img = scaleImageProgress(img, drawW, drawH, easedFrameProgress)
+		case "slide-left":
+			locX = ev.X + ev.Width + int(float64(ev.Width)*(1.0-easedFrameProgress))
+			locY = renderY
+		case "slide-right":
+			locX = ev.X - int(float64(ev.Width)*(1.0-easedFrameProgress))
+			locY = renderY
+		case "slide-up":
+			locX = renderX
+			locY = ev.Y + ev.Height + int(float64(ev.Height)*(1.0-easedFrameProgress))
+		case "slide-down":
+			locX = renderX
+			locY = ev.Y - int(float64(ev.Height)*(1.0-easedFrameProgress))
+		}
+	}
+
+	destRect := image.Rect(locX, locY, locX+drawW, locY+drawH)
+	if destRect.Dx() > 0 && destRect.Dy() > 0 {
+		if alpha >= 1.0 {
+			draw.Draw(buf, destRect, img, image.Point{}, draw.Over)
+		} else {
+			maskUniform := image.NewUniform(color.Alpha{A: uint8(alpha * 255)})
+			draw.DrawMask(buf, destRect, img, image.Point{}, maskUniform, image.Point{}, draw.Over)
+		}
+	}
+}
+
+var slideEntryAnimFrames = int(0.4 * 30) // 12 frames
+var slideExitAnimFrames = int(0.4 * 30)  // 12 frames
+
+func handleLower3rdEvent(e *Engine, frameNum int, ev model.FrameEvent, buf *image.RGBA, cam CameraState) {
+	var title string
+	var subtitle string
+	var colorHex string
+
+	parts := strings.SplitN(ev.TargetImage, "|", 3)
+	title = parts[0]
+	if len(parts) > 1 {
+		subtitle = parts[1]
+	}
+	if len(parts) > 2 {
+		colorHex = parts[2]
+	}
+
+	lower3rdW := e.Width
+	lower3rdH := int(float64(e.Height) * 0.14)
+	if lower3rdH < 80 {
+		lower3rdH = 80
+	}
+	if lower3rdH > 160 {
+		lower3rdH = 160
+	}
+	targetY := e.Height - lower3rdH - int(float64(e.Height)*0.04)
+
+	totalAnimFrames := slideEntryAnimFrames + slideExitAnimFrames
+	frameInEvent := frameNum - ev.StartFrame
+	durationFrames := ev.EndFrame - ev.StartFrame
+
+	var localY int
+	var alpha float64 = 1.0
+
+	if frameInEvent <= totalAnimFrames && durationFrames > 0 {
+		if frameInEvent < slideEntryAnimFrames {
+			// Entry: slide up from below
+			p := float64(frameInEvent) / float64(slideEntryAnimFrames)
+			ep := easeOutCubic(p)
+			sourceY := e.Height - lower3rdH - int(float64(e.Height)*0.04)
+			localY = int(float64(targetY-sourceY)*(1.0-ep)) + sourceY
+			alpha = ep
+		} else if frameInEvent > durationFrames-slideExitAnimFrames {
+			// Exit: slide down
+			exitFrame := frameInEvent - (durationFrames - slideExitAnimFrames)
+			p := float64(exitFrame) / float64(slideExitAnimFrames)
+			ep := easeInOutCubic(p)
+			sourceY := e.Height + 20
+			localY = targetY + int(float64(sourceY-targetY)*ep)
+			alpha = 1.0 - ep
+		} else {
+			localY = targetY
+			alpha = 1.0
+		}
+	} else {
+		localY = targetY
+		alpha = 1.0
+	}
+
+	panelKey := fmt.Sprintf("__lower3rd_%s_%s_%s", title, subtitle, colorHex)
+	e.AssetMu.RLock()
+	panel, ok := e.Assets[panelKey]
+	e.AssetMu.RUnlock()
+	if !ok {
+		panel = RenderLower3rdPanel(e.Width, e.Height, title, subtitle, colorHex)
+		e.AssetMu.Lock()
+		e.Assets[panelKey] = panel
+		e.AssetMu.Unlock()
+	}
+
+	panelRGBA, ok := panel.(*image.RGBA)
+	if !ok {
+		return
+	}
+
+	destRect := image.Rect(0, localY, lower3rdW, localY+lower3rdH)
+	srcRect := image.Rect(0, 0, lower3rdW, lower3rdH)
+	cropped := image.NewRGBA(srcRect)
+	copy(cropped.Pix, panelRGBA.Pix[0:len(cropped.Pix)])
+
+	if alpha >= 1.0 {
+		draw.Draw(buf, destRect, cropped, image.Point{}, draw.Over)
+	} else {
+		maskUniform := image.NewUniform(color.Alpha{A: uint8(alpha * 255)})
+		draw.DrawMask(buf, destRect, cropped, image.Point{}, maskUniform, image.Point{}, draw.Over)
+	}
+}
+
+func scaleImageProgress(src image.Image, w, h int, progress float64) image.Image {
+	if progress >= 1.0 {
+		return scaleImage(src, w, h)
+	}
+	srcW := src.Bounds().Dx()
+	srcH := src.Bounds().Dy()
+	ratioSrc := float64(srcW) / float64(srcH)
+	ratioTarget := float64(w) / float64(h)
+	var baseW, baseH int
+	if ratioSrc > ratioTarget {
+		baseW = w
+		baseH = int(float64(w) / ratioSrc)
+		if baseH <= 0 {
+			baseH = 1
+		}
+	} else {
+		baseH = h
+		baseW = int(float64(h) * ratioSrc)
+		if baseW <= 0 {
+			baseW = 1
+		}
+	}
+
+	scale := 1.0 + 0.33*(1.0-progress)
+	curW := int(float64(baseW) * scale)
+	curH := int(float64(baseH) * scale)
+	if curW <= 0 {
+		curW = 1
+	}
+	if curH <= 0 {
+		curH = 1
+	}
+
+	dst := image.NewRGBA(image.Rect(0, 0, w, h))
+	xdraw.CatmullRom.Scale(dst, dst.Bounds(), src, src.Bounds(), xdraw.Over, nil)
+	return dst
 }
 
 func scaleImage(src image.Image, w, h int) image.Image {
@@ -505,16 +744,20 @@ func invertImageColors(src image.Image) image.Image {
 	for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
 		for x := bounds.Min.X; x < bounds.Max.X; x++ {
 			c := src.At(x, y)
-			nrgba := color.NRGBAModel.Convert(c).(color.NRGBA)
-			if nrgba.A > 0 {
-				dst.Set(x, y, color.NRGBA{
-					R: 255 - nrgba.R,
-					G: 255 - nrgba.G,
-					B: 255 - nrgba.B,
-					A: nrgba.A,
+			rgba := color.RGBAModel.Convert(c).(color.RGBA)
+			if rgba.A > 0 {
+				f := float64(rgba.A) / 255.0
+				r := uint8(f * float64(rgba.R))
+				g := uint8(f * float64(rgba.G))
+				b := uint8(f * float64(rgba.B))
+				dst.Set(x, y, color.RGBA{
+					R: 255 - r,
+					G: 255 - g,
+					B: 255 - b,
+					A: rgba.A,
 				})
 			} else {
-				dst.Set(x, y, color.Alpha{0})
+				dst.Set(x, y, color.RGBA{})
 			}
 		}
 	}

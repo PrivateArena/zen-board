@@ -82,6 +82,61 @@ func createDummyPNG(path string) {
 	png.Encode(f, img)
 }
 
+func TestV3Features(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping v3 integration test in short mode")
+	}
+
+	ts := testutil.NewMockTTSServer()
+	defer ts.Close()
+
+	tmpDir, err := os.MkdirTemp("", "zen-v3-test-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	scriptPath := filepath.Join(tmpDir, "v3_test.zen")
+	inputPath := filepath.Join("examples", "v3_test.zen")
+	data, err := os.ReadFile(inputPath)
+	if err != nil {
+		t.Fatalf("reading examples/v3_test.zen: %v", err)
+	}
+	if err := os.WriteFile(scriptPath, data, 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	outputPath := filepath.Join(tmpDir, "output.mp4")
+	assetsDir := filepath.Join(".", "assets")
+	handPath := filepath.Join(assetsDir, "hand.png")
+
+	oldArgs := os.Args
+	defer func() { os.Args = oldArgs }()
+
+	os.Args = []string{
+		"zen-board",
+		"-script", scriptPath,
+		"-o", outputPath,
+		"-tts", ts.URL,
+		"-assets", assetsDir,
+		"-hand", handPath,
+		"-fps", "10",
+		"-w", "320",
+		"-h", "180",
+		"-disable-transcript",
+		"-freeze", "15",
+	}
+
+	err = Run()
+	if err != nil {
+		t.Fatalf("Run() failed for v3_test.zen: %v", err)
+	}
+
+	if _, err := os.Stat(outputPath); os.IsNotExist(err) {
+		t.Errorf("v3 output file %s was not created", outputPath)
+	}
+}
+
 func TestIntegrationDisableTranscript(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping integration test in short mode")

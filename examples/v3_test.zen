@@ -1,0 +1,32 @@
+[chapter:"V3 Feature Showcase"]
+Welcome to the zen-board v3 roadmap demo. Today we're showcasing the new slideshow and overlay primitives.
+[slide:pyramids:center:pop]
+The new [slide:pyramids:fullscreen:fade] primitive lets you drop images instantly without the hand-drawn reveal.
+[lower3rd:"Slide Primitive":"Instant image drop with transitions"]
+That's perfect for meme-talking style videos.
+[slide:city:TR:fade]
+[arrow:TL:BR:curved:0.5] Notice how this curved arrow draws attention to the hero image.
+[highlight:100,200,400,150:pulse:2.0]
+The [highlight:] primitive creates attention boxes with animated marching ants or pulsing rings.
+[compare:robot:world:"Code World":"Real World":"Before"]
+Lower thirds slide in and out automatically: [lower3rd:"Lower Third Demo":"Animated name card":4.0:FF4444]
+[wait:1.0]
+[transition:fade-black:0.5]
+Transitions enable scene segmentation between topics.
+[slide:city:LH:slide-left]
+Slides can use seven transition types: none, fade, pop, slide-left, slide-right, slide-up, slide-down.
+[overlay:world:0.3:fullscreen]
+Persistent semi-transparent overlays (watermarks, vignettes) stay on until explicitly erased.
+[erase:*]
+Wipe the board clean and start fresh.
+[clear]
+The v3 renderer now supports embedded Go fonts — no Linux font paths required.
+[style:blackboard]
+Switching to [style:blackboard] dark board mode with automatic color inversion.
+[lower3rd:"Blackboard Mode":"Automatic inverted colors"]
+[slide:pyramids:center:slide-up]
+Blackboard style inverts asset colors for contrast.
+And that wraps the v3 feature preview.
+[style:whiteboard]
+[chapter:"End"]
+Thanks for watching.

@@ -140,7 +140,7 @@ func CompileTimeline(conf *model.Project, allWordTimings []model.WordTiming, pLi
 			preset := ""
 
 			isSpecialPrefix := false
-			specialPrefixes := []string{"WAIT:", "zoom:", "style:", "chapter:", "sfx:", "subtitle:", "text:", "erase:", "move:", "gen:"}
+			specialPrefixes := []string{"WAIT:", "zoom:", "style:", "chapter:", "sfx:", "subtitle:", "text:", "erase:", "move:", "gen:", "slide:", "lower3rd:"}
 			for _, prefix := range specialPrefixes {
 				if strings.HasPrefix(actionTag, prefix) {
 					isSpecialPrefix = true
@@ -317,17 +317,17 @@ func CompileTimeline(conf *model.Project, allWordTimings []model.WordTiming, pLi
 				continue
 			}
 
-			if strings.HasPrefix(action.Tag, "erase:") {
-				targetAsset := strings.TrimPrefix(action.Tag, "erase:")
-				eraseEvent := model.FrameEvent{
-					TargetImage: targetAsset,
-					StartFrame:  startFrame,
-					EndFrame:    endFrame,
-					EventType:   "erase",
-					HandStyle:   "eraser",
-					MaskStyle:   "ttb",
-					ZoomFocus:   currentZoomFocus,
-				}
+		if strings.HasPrefix(action.Tag, "erase:") {
+			targetAsset := strings.TrimPrefix(action.Tag, "erase:")
+			eraseEvent := model.FrameEvent{
+				TargetImage: targetAsset,
+				StartFrame:  startFrame,
+				EndFrame:    endFrame,
+				EventType:   "erase",
+				HandStyle:   "eraser",
+				MaskStyle:   "ttb",
+				ZoomFocus:   currentZoomFocus,
+			}
 				
 				for i := len(timeline.Events) - 1; i >= 0; i-- {
 					if timeline.Events[i].TargetImage == targetAsset && (timeline.Events[i].EventType == "draw" || timeline.Events[i].EventType == "text" || timeline.Events[i].EventType == "gen" || timeline.Events[i].EventType == "static") {
@@ -507,8 +507,84 @@ func CompileTimeline(conf *model.Project, allWordTimings []model.WordTiming, pLi
 				continue
 			}
 
-			x, y := action.X, action.Y
-			w, h := action.W, action.H
+		if strings.HasPrefix(action.Tag, "slide:") {
+			rest := strings.TrimPrefix(action.Tag, "slide:")
+			parts := strings.SplitN(rest, ":", 3)
+			asset := parts[0]
+			preset := ""
+			transition := "none"
+			fitMode := "fit"
+			if len(parts) > 1 && parts[1] != "" {
+				preset = parts[1]
+			}
+			if len(parts) > 2 && parts[2] != "" {
+				transition = parts[2]
+			}
+
+			sx, sy, sw, sh := action.X, action.Y, action.W, action.H
+			if sw == 0 && sh == 0 {
+				sw = conf.Width
+				sh = conf.Height
+			}
+			if preset != "" && sx == 0 && sy == 0 {
+				px, py, pw, ph := getPresetLayout(preset, conf.Width, conf.Height)
+				sx, sy = px, py
+				sw, sh = pw, ph
+			}
+			if sx == 0 && sy == 0 && sw == 0 && sh == 0 {
+				sx, sy, sw, sh = 0, 0, conf.Width, conf.Height
+			}
+
+			slideFocus := preset
+			if slideFocus == "" {
+				slideFocus = currentZoomFocus
+			}
+			timeline.Events = append(timeline.Events, model.FrameEvent{
+				TargetImage: asset,
+				StartFrame:  startFrame,
+				EndFrame:    endFrame,
+				X:           sx, Y: sy, Width: sw, Height: sh,
+				EventType:   "slide",
+				ZoomFocus:   slideFocus,
+				Transition:  transition,
+				FitMode:     fitMode,
+			})
+			continue
+		}
+
+		if strings.HasPrefix(action.Tag, "lower3rd:") {
+			rest := strings.TrimPrefix(action.Tag, "lower3rd:")
+			parts := strings.SplitN(rest, ":", 3)
+			title := unquote(parts[0])
+			subtitle := ""
+			if len(parts) > 1 {
+				subtitle = unquote(parts[1])
+			}
+			colorHex := ""
+			if len(parts) > 2 {
+				colorHex = parts[2]
+			}
+			if strings.HasSuffix(action.Tag, "+") {
+				continue
+			}
+			targetID := fmt.Sprintf("__lower3rd_%s_%s_%s", title, subtitle, colorHex)
+			duration := revealDuration
+			if duration == 0 {
+				duration = 3.0
+			}
+			end := startFrame + int(duration*float64(conf.FPS))
+			timeline.Events = append(timeline.Events, model.FrameEvent{
+				TargetImage: targetID,
+				StartFrame:  startFrame,
+				EndFrame:    end,
+				EventType:   "lower3rd",
+				ZoomFocus:   currentZoomFocus,
+			})
+			continue
+		}
+
+		x, y := action.X, action.Y
+		w, h := action.W, action.H
 
 			if preset != "" && x == 0 && y == 0 && w == 0 && h == 0 {
 				px, py, pw, ph := getPresetLayout(preset, conf.Width, conf.Height)
@@ -580,7 +656,7 @@ func CompileTimeline(conf *model.Project, allWordTimings []model.WordTiming, pLi
 	var missingAssets []string
 	seenAssets := make(map[string]bool)
 	for _, ev := range timeline.Events {
-		if ev.TargetImage == "clear" || strings.HasPrefix(ev.TargetImage, "__text_") || strings.HasPrefix(ev.TargetImage, "__gen_") {
+		if ev.TargetImage == "clear" || strings.HasPrefix(ev.TargetImage, "__text_") || strings.HasPrefix(ev.TargetImage, "__gen_") || strings.HasPrefix(ev.TargetImage, "__lower3rd_") {
 			continue
 		}
 		if seenAssets[ev.TargetImage] {
@@ -607,6 +683,17 @@ func CompileTimeline(conf *model.Project, allWordTimings []model.WordTiming, pLi
 		return nil, fmt.Errorf("missing asset files in %s: %s (please make sure they exist as .png files)", conf.AssetsDir, strings.Join(missingAssets, ", "))
 	}
 
+	for _, ev := range timeline.Events {
+		if ev.EventType == "erase" {
+			if _, hasAsset := assetMap[ev.TargetImage]; !hasAsset {
+				assetPath := filepath.Join(conf.AssetsDir, ev.TargetImage+".png")
+				if _, err := os.Stat(assetPath); os.IsNotExist(err) {
+					log.Printf("Warning: [erase:%s] erasing an asset that was not placed on screen; check asset name", ev.TargetImage)
+				}
+			}
+		}
+	}
+
 	return &TimelineCompilation{
 		Timeline:       timeline,
 		TextJobs:       textJobs,
@@ -615,6 +702,14 @@ func CompileTimeline(conf *model.Project, allWordTimings []model.WordTiming, pLi
 		Chapters:       chapters,
 		SubtitleEvents: subtitleEvents,
 	}, nil
+}
+
+func unquote(s string) string {
+	s = strings.TrimSpace(s)
+	if len(s) >= 2 && s[0] == '"' && s[len(s)-1] == '"' {
+		return s[1 : len(s)-1]
+	}
+	return s
 }
 
 func getPresetLayout(preset string, canvasW, canvasH int) (x, y, w, h int) {
@@ -703,7 +798,7 @@ func PrepareAssets(conf *model.Project, engine *render.Engine, timeline *model.T
 	fmt.Println("Loading assets...")
 	seenAssets := make(map[string]bool)
 	for _, ev := range timeline.Events {
-		if ev.TargetImage == "clear" || strings.HasPrefix(ev.TargetImage, "__text_") || strings.HasPrefix(ev.TargetImage, "__gen_") {
+		if ev.TargetImage == "clear" || strings.HasPrefix(ev.TargetImage, "__text_") || strings.HasPrefix(ev.TargetImage, "__gen_") || strings.HasPrefix(ev.TargetImage, "__lower3rd_") {
 			continue
 		}
 		if seenAssets[ev.TargetImage] {

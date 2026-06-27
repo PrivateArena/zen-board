@@ -3,46 +3,49 @@ package render
 import (
 	"image"
 	"image/color"
-	"os"
 
 	"golang.org/x/image/font"
+	"golang.org/x/image/font/gofont/gobold"
+	"golang.org/x/image/font/gofont/gomono"
+	"golang.org/x/image/font/gofont/gomonobold"
 	"golang.org/x/image/font/gofont/goregular"
 	"golang.org/x/image/font/opentype"
 	"golang.org/x/image/math/fixed"
 )
+
+var (
+	embeddedRegular  = goregular.TTF
+	embeddedBold     = gobold.TTF
+	embeddedMono     = gomono.TTF
+	embeddedMonoBold = gomonobold.TTF
+)
+
+func pickEmbeddedFont(fontPreset string, isBold bool) []byte {
+	switch fontPreset {
+	case "mono":
+		if isBold {
+			return embeddedMonoBold
+		}
+		return embeddedMono
+	case "serif":
+		if isBold {
+			return embeddedBold
+		}
+		return embeddedRegular
+	default: // sans
+		if isBold {
+			return embeddedBold
+		}
+		return embeddedRegular
+	}
+}
 
 func RenderText(text string, fontPreset string, size float64, isBold bool, fgColor color.Color) (image.Image, error) {
 	if text == "" {
 		return image.NewRGBA(image.Rect(0, 0, 1, 1)), nil
 	}
 
-	// Determine font path based on preset
-	fontPath := "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf"
-	switch fontPreset {
-	case "serif":
-		if isBold {
-			fontPath = "/usr/share/fonts/truetype/liberation/LiberationSerif-Bold.ttf"
-		} else {
-			fontPath = "/usr/share/fonts/truetype/liberation/LiberationSerif-Regular.ttf"
-		}
-	case "mono":
-		if isBold {
-			fontPath = "/usr/share/fonts/truetype/liberation/LiberationMono-Bold.ttf"
-		} else {
-			fontPath = "/usr/share/fonts/truetype/liberation/LiberationMono-Regular.ttf"
-		}
-	default: // sans
-		if isBold {
-			fontPath = "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf"
-		} else {
-			fontPath = "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf"
-		}
-	}
-
-	fontBytes, err := os.ReadFile(fontPath)
-	if err != nil {
-		fontBytes = goregular.TTF
-	}
+	fontBytes := pickEmbeddedFont(fontPreset, isBold)
 
 	f, err := opentype.Parse(fontBytes)
 	if err != nil {
@@ -59,7 +62,6 @@ func RenderText(text string, fontPreset string, size float64, isBold bool, fgCol
 	}
 	defer face.Close()
 
-	// Measure text bounds
 	drawer := &font.Drawer{
 		Face: face,
 	}
@@ -73,7 +75,6 @@ func RenderText(text string, fontPreset string, size float64, isBold bool, fgCol
 	width := xMax - xMin
 	height := yMax - yMin
 
-	// Add margin padding to prevent clipping at the edges
 	pad := 10
 	imgW := width + 2*pad
 	imgH := height + 2*pad
