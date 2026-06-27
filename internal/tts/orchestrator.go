@@ -31,7 +31,7 @@ func OrchestrateTTS(client *TTSClient, lines []model.ScriptLine, speed float64, 
 
 	results := make([]*SynthResult, len(lines))
 	var wg sync.WaitGroup
-	semTTS := make(chan struct{}, 5)
+	semTTS := make(chan struct{}, 1)
 
 	fmt.Println("Synthesizing TTS in parallel...")
 	for _, job := range jobs {
@@ -100,14 +100,13 @@ func OrchestrateTTS(client *TTSClient, lines []model.ScriptLine, speed float64, 
 			if waitDuration > 0 {
 				silentChunk := CreateSilentWAV(wavParams, waitDuration)
 				audioChunks = append(audioChunks, silentChunk)
-
-				pLines = append(pLines, model.ProcessedLine{
-					StartTime: currentTime,
-					Duration:  waitDuration,
-					Actions:   line.Actions,
-				})
-				currentTime += waitDuration
 			}
+			pLines = append(pLines, model.ProcessedLine{
+				StartTime: currentTime,
+				Duration:  waitDuration,
+				Actions:   line.Actions,
+			})
+			currentTime += waitDuration
 			continue
 		}
 

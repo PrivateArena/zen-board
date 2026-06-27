@@ -140,7 +140,7 @@ func CompileTimeline(conf *model.Project, allWordTimings []model.WordTiming, pLi
 			preset := ""
 
 			isSpecialPrefix := false
-			specialPrefixes := []string{"WAIT:", "zoom:", "style:", "chapter:", "sfx:", "subtitle:", "text:", "erase:", "move:", "gen:", "slide:", "lower3rd:"}
+			specialPrefixes := []string{"WAIT:", "zoom:", "style:", "chapter:", "sfx:", "subtitle:", "text:", "erase:", "move:", "gen:", "slide:", "lower3rd:", "arrow:", "highlight:", "compare:", "transition:", "overlay:", "counter:"}
 			for _, prefix := range specialPrefixes {
 				if strings.HasPrefix(actionTag, prefix) {
 					isSpecialPrefix = true
@@ -329,6 +329,7 @@ func CompileTimeline(conf *model.Project, allWordTimings []model.WordTiming, pLi
 				ZoomFocus:   currentZoomFocus,
 			}
 				
+				found := false
 				for i := len(timeline.Events) - 1; i >= 0; i-- {
 					if timeline.Events[i].TargetImage == targetAsset && (timeline.Events[i].EventType == "draw" || timeline.Events[i].EventType == "text" || timeline.Events[i].EventType == "gen" || timeline.Events[i].EventType == "static") {
 						eraseEvent.X = timeline.Events[i].X
@@ -339,8 +340,13 @@ func CompileTimeline(conf *model.Project, allWordTimings []model.WordTiming, pLi
 						if timeline.Events[i].EndFrame > startFrame {
 							timeline.Events[i].EndFrame = startFrame
 						}
+						found = true
 						break
 					}
+				}
+				if !found {
+					log.Printf("Warning: [erase:%s] cannot find active asset to erase; skipping", targetAsset)
+					continue
 				}
 				timeline.Events = append(timeline.Events, eraseEvent)
 				continue
@@ -509,7 +515,7 @@ func CompileTimeline(conf *model.Project, allWordTimings []model.WordTiming, pLi
 
 		if strings.HasPrefix(action.Tag, "slide:") {
 			rest := strings.TrimPrefix(action.Tag, "slide:")
-			parts := strings.SplitN(rest, ":", 3)
+			parts := strings.Split(rest, ":")
 			asset := parts[0]
 			preset := ""
 			transition := "none"
@@ -519,6 +525,9 @@ func CompileTimeline(conf *model.Project, allWordTimings []model.WordTiming, pLi
 			}
 			if len(parts) > 2 && parts[2] != "" {
 				transition = parts[2]
+			}
+			if len(parts) > 3 && parts[3] != "" {
+				fitMode = parts[3]
 			}
 
 			sx, sy, sw, sh := action.X, action.Y, action.W, action.H
@@ -549,29 +558,46 @@ func CompileTimeline(conf *model.Project, allWordTimings []model.WordTiming, pLi
 				Transition:  transition,
 				FitMode:     fitMode,
 			})
+			timeline.Events = append(timeline.Events, model.FrameEvent{
+				TargetImage: asset,
+				StartFrame:  endFrame,
+				EndFrame:    999999,
+				X:           sx, Y: sy, Width: sw, Height: sh,
+				EventType:   "slide",
+				ZoomFocus:   slideFocus,
+				Transition:  "none",
+				FitMode:     fitMode,
+			})
 			continue
 		}
 
 		if strings.HasPrefix(action.Tag, "lower3rd:") {
 			rest := strings.TrimPrefix(action.Tag, "lower3rd:")
-			parts := strings.SplitN(rest, ":", 3)
-			title := unquote(parts[0])
+			parts := strings.Split(rest, ":")
+			title := ""
 			subtitle := ""
+			duration := 4.0
+			colorHex := ""
+
+			if len(parts) > 0 {
+				title = unquote(parts[0])
+			}
 			if len(parts) > 1 {
 				subtitle = unquote(parts[1])
 			}
-			colorHex := ""
-			if len(parts) > 2 {
-				colorHex = parts[2]
+			for i := 2; i < len(parts); i++ {
+				part := unquote(parts[i])
+				if val, err := strconv.ParseFloat(part, 64); err == nil {
+					duration = val
+				} else {
+					colorHex = part
+				}
 			}
+
 			if strings.HasSuffix(action.Tag, "+") {
 				continue
 			}
-			targetID := fmt.Sprintf("__lower3rd_%s_%s_%s", title, subtitle, colorHex)
-			duration := revealDuration
-			if duration == 0 {
-				duration = 3.0
-			}
+			targetID := fmt.Sprintf("__lower3rd_%s|%s|%s", title, subtitle, colorHex)
 			end := startFrame + int(duration*float64(conf.FPS))
 			timeline.Events = append(timeline.Events, model.FrameEvent{
 				TargetImage: targetID,
@@ -579,6 +605,219 @@ func CompileTimeline(conf *model.Project, allWordTimings []model.WordTiming, pLi
 				EndFrame:    end,
 				EventType:   "lower3rd",
 				ZoomFocus:   currentZoomFocus,
+			})
+			continue
+		}
+
+		if strings.HasPrefix(action.Tag, "arrow:") {
+			rest := strings.TrimPrefix(action.Tag, "arrow:")
+			parts := strings.Split(rest, ":")
+			from := parts[0]
+			to := parts[1]
+			style := "straight"
+			duration := 1.0
+			if len(parts) > 2 && parts[2] != "" {
+				style = parts[2]
+			}
+			if len(parts) > 3 && parts[3] != "" {
+				if d, err := strconv.ParseFloat(parts[3], 64); err == nil {
+					duration = d
+				}
+			}
+
+			end := startFrame + int(duration*float64(conf.FPS))
+			timeline.Events = append(timeline.Events, model.FrameEvent{
+				StartFrame: startFrame,
+				EndFrame:   end,
+				EventType:  "arrow",
+				ArrowFrom:  from,
+				ArrowTo:    to,
+				ArrowStyle: style,
+				ZoomFocus:  currentZoomFocus,
+			})
+			timeline.Events = append(timeline.Events, model.FrameEvent{
+				StartFrame: end,
+				EndFrame:   999999,
+				EventType:  "arrow_static",
+				ArrowFrom:  from,
+				ArrowTo:    to,
+				ArrowStyle: style,
+				ZoomFocus:  currentZoomFocus,
+			})
+			continue
+		}
+
+		if strings.HasPrefix(action.Tag, "highlight:") {
+			rest := strings.TrimPrefix(action.Tag, "highlight:")
+			parts := strings.Split(rest, ":")
+			region := parts[0]
+			style := "rect"
+			duration := 2.0
+			if len(parts) > 1 && parts[1] != "" {
+				style = parts[1]
+			}
+			if len(parts) > 2 && parts[2] != "" {
+				if d, err := strconv.ParseFloat(parts[2], 64); err == nil {
+					duration = d
+				}
+			}
+
+			end := startFrame + int(duration*float64(conf.FPS))
+			timeline.Events = append(timeline.Events, model.FrameEvent{
+				StartFrame:     startFrame,
+				EndFrame:       end,
+				EventType:      "highlight",
+				TargetImage:    region,
+				HighlightStyle: style,
+				ZoomFocus:      currentZoomFocus,
+			})
+			continue
+		}
+
+		if strings.HasPrefix(action.Tag, "compare:") {
+			rest := strings.TrimPrefix(action.Tag, "compare:")
+			parts := strings.Split(rest, ":")
+			left := parts[0]
+			right := parts[1]
+			lblLeft := ""
+			lblRight := ""
+			if len(parts) > 2 {
+				lblLeft = unquote(parts[2])
+			}
+			if len(parts) > 3 {
+				lblRight = unquote(parts[3])
+			}
+
+			timeline.Events = append(timeline.Events, model.FrameEvent{
+				StartFrame:   startFrame,
+				EndFrame:     endFrame,
+				EventType:    "compare",
+				CompareLeft:  left,
+				CompareRight: right,
+				LabelLeft:    lblLeft,
+				LabelRight:   lblRight,
+				ZoomFocus:    currentZoomFocus,
+			})
+			timeline.Events = append(timeline.Events, model.FrameEvent{
+				StartFrame:   endFrame,
+				EndFrame:     999999,
+				EventType:    "compare",
+				CompareLeft:  left,
+				CompareRight: right,
+				LabelLeft:    lblLeft,
+				LabelRight:   lblRight,
+				ZoomFocus:    currentZoomFocus,
+			})
+			continue
+		}
+
+		if strings.HasPrefix(action.Tag, "overlay:") {
+			rest := strings.TrimPrefix(action.Tag, "overlay:")
+			parts := strings.Split(rest, ":")
+			asset := parts[0]
+			opacity := 0.5
+			preset := "fullscreen"
+			if len(parts) > 1 && parts[1] != "" {
+				if op, err := strconv.ParseFloat(parts[1], 64); err == nil {
+					opacity = op
+				}
+			}
+			if len(parts) > 2 && parts[2] != "" {
+				preset = parts[2]
+			}
+
+			timeline.Events = append(timeline.Events, model.FrameEvent{
+				TargetImage: asset,
+				StartFrame:  startFrame,
+				EndFrame:    999999,
+				EventType:   "overlay",
+				Opacity:     opacity,
+				ZoomFocus:   preset,
+			})
+			continue
+		}
+
+		if strings.HasPrefix(action.Tag, "transition:") {
+			rest := strings.TrimPrefix(action.Tag, "transition:")
+			parts := strings.Split(rest, ":")
+			tType := parts[0]
+			duration := 0.5
+			if len(parts) > 1 && parts[1] != "" {
+				if d, err := strconv.ParseFloat(parts[1], 64); err == nil {
+					duration = d
+				}
+			}
+
+			end := startFrame + int(duration*float64(conf.FPS))
+			midpoint := startFrame + int(duration*float64(conf.FPS))/2
+
+			// Truncate all active events at the midpoint of the transition
+			var activeEvents []model.FrameEvent
+			for _, ev := range timeline.Events {
+				if ev.StartFrame >= midpoint {
+					continue
+				}
+				if ev.EndFrame > midpoint {
+					ev.EndFrame = midpoint
+				}
+				activeEvents = append(activeEvents, ev)
+			}
+			timeline.Events = activeEvents
+			gridIndex = 0
+
+			timeline.Events = append(timeline.Events, model.FrameEvent{
+				StartFrame:     startFrame,
+				EndFrame:       end,
+				EventType:      "transition",
+				TransitionType: tType,
+				ZoomFocus:      currentZoomFocus,
+			})
+			continue
+		}
+
+		if strings.HasPrefix(action.Tag, "counter:") {
+			rest := strings.TrimPrefix(action.Tag, "counter:")
+			parts := strings.Split(rest, ":")
+			cStart := 0.0
+			cEnd := 0.0
+			duration := 2.0
+			format := "%d"
+			preset := "center"
+
+			if len(parts) > 0 {
+				cStart, _ = strconv.ParseFloat(parts[0], 64)
+			}
+			if len(parts) > 1 {
+				cEnd, _ = strconv.ParseFloat(parts[1], 64)
+			}
+			if len(parts) > 2 {
+				duration, _ = strconv.ParseFloat(parts[2], 64)
+			}
+			if len(parts) > 3 {
+				format = parts[3]
+			}
+			if len(parts) > 4 {
+				preset = parts[4]
+			}
+
+			end := startFrame + int(duration*float64(conf.FPS))
+			timeline.Events = append(timeline.Events, model.FrameEvent{
+				StartFrame:    startFrame,
+				EndFrame:      end,
+				EventType:     "counter",
+				CounterStart:  cStart,
+				CounterEnd:    cEnd,
+				CounterFormat: format,
+				ZoomFocus:     preset,
+			})
+			timeline.Events = append(timeline.Events, model.FrameEvent{
+				StartFrame:    end,
+				EndFrame:      999999,
+				EventType:     "counter",
+				CounterStart:  cEnd,
+				CounterEnd:    cEnd,
+				CounterFormat: format,
+				ZoomFocus:     preset,
 			})
 			continue
 		}
@@ -656,7 +895,28 @@ func CompileTimeline(conf *model.Project, allWordTimings []model.WordTiming, pLi
 	var missingAssets []string
 	seenAssets := make(map[string]bool)
 	for _, ev := range timeline.Events {
-		if ev.TargetImage == "clear" || strings.HasPrefix(ev.TargetImage, "__text_") || strings.HasPrefix(ev.TargetImage, "__gen_") || strings.HasPrefix(ev.TargetImage, "__lower3rd_") {
+		if ev.EventType == "compare" {
+			for _, imgID := range []string{ev.CompareLeft, ev.CompareRight} {
+				if imgID == "" || seenAssets[imgID] {
+					continue
+				}
+				seenAssets[imgID] = true
+				var assetPath string
+				if entry, ok := assetMap[imgID]; ok {
+					assetPath = filepath.Join(conf.AssetsDir, entry.File)
+				} else {
+					assetPath = filepath.Join(conf.AssetsDir, imgID+".png")
+				}
+				if _, err := os.Stat(assetPath); os.IsNotExist(err) {
+					missingAssets = append(missingAssets, imgID)
+				}
+			}
+			continue
+		}
+		if ev.TargetImage == "" || ev.TargetImage == "clear" || strings.HasPrefix(ev.TargetImage, "__text_") || strings.HasPrefix(ev.TargetImage, "__gen_") || strings.HasPrefix(ev.TargetImage, "__lower3rd_") {
+			continue
+		}
+		if ev.EventType == "arrow" || ev.EventType == "arrow_static" || ev.EventType == "highlight" || ev.EventType == "counter" || ev.EventType == "transition" {
 			continue
 		}
 		if seenAssets[ev.TargetImage] {
@@ -798,7 +1058,29 @@ func PrepareAssets(conf *model.Project, engine *render.Engine, timeline *model.T
 	fmt.Println("Loading assets...")
 	seenAssets := make(map[string]bool)
 	for _, ev := range timeline.Events {
-		if ev.TargetImage == "clear" || strings.HasPrefix(ev.TargetImage, "__text_") || strings.HasPrefix(ev.TargetImage, "__gen_") || strings.HasPrefix(ev.TargetImage, "__lower3rd_") {
+		if ev.EventType == "compare" {
+			for _, imgID := range []string{ev.CompareLeft, ev.CompareRight} {
+				if imgID == "" || seenAssets[imgID] {
+					continue
+				}
+				seenAssets[imgID] = true
+				var assetPath string
+				if entry, ok := assetMap[imgID]; ok {
+					assetPath = filepath.Join(conf.AssetsDir, entry.File)
+				} else {
+					assetPath = filepath.Join(conf.AssetsDir, imgID+".png")
+				}
+				err := engine.LoadAsset(imgID, assetPath)
+				if err != nil {
+					log.Printf("Warning: Could not load compare asset %s: %v", imgID, err)
+				}
+			}
+			continue
+		}
+		if ev.TargetImage == "" || ev.TargetImage == "clear" || strings.HasPrefix(ev.TargetImage, "__text_") || strings.HasPrefix(ev.TargetImage, "__gen_") || strings.HasPrefix(ev.TargetImage, "__lower3rd_") {
+			continue
+		}
+		if ev.EventType == "arrow" || ev.EventType == "arrow_static" || ev.EventType == "highlight" || ev.EventType == "counter" || ev.EventType == "transition" {
 			continue
 		}
 		if seenAssets[ev.TargetImage] {

@@ -13,23 +13,56 @@ type Pipe struct {
 	extraCmd *exec.Cmd
 }
 
-func NewPipe(outputPath, audioPath, assPath, bgmPath string, bgmVolume float64, width, height, fps int, duration float64, metadataPath string, fastMode bool) (*Pipe, error) {
-	videoIdx := 0
-	audioIdx := 1
+func buildAudioArgs(audioPath, bgmPath string, bgmVolume float64, videoIdx int, nextIdxStart int) (inputArgs []string, filterComplex []string, mapArgs []string, nextIdx int) {
+	nextIdx = nextIdxStart
+	audioIdx := -1
 	bgmIdx := -1
-	metaIdx := -1
 
-	nextIdx := 2
-	hasBGM := bgmPath != ""
-	if hasBGM {
+	if audioPath != "" {
+		inputArgs = append(inputArgs, "-i", audioPath)
+		audioIdx = nextIdx
+		nextIdx++
+	}
+
+	if bgmPath != "" {
+		inputArgs = append(inputArgs, "-stream_loop", "-1", "-i", bgmPath)
 		bgmIdx = nextIdx
 		nextIdx++
 	}
-	if metadataPath != "" {
-		metaIdx = nextIdx
-		nextIdx++
+
+	if audioIdx != -1 && bgmIdx != -1 {
+		filterComplex = []string{
+			"-filter_complex",
+			fmt.Sprintf("[%d:a]volume=%.4f[bgm];[%d:a][bgm]amix=inputs=2:duration=first:dropout_transition=0[audio_out]", bgmIdx, bgmVolume, audioIdx),
+		}
+		mapArgs = []string{
+			"-map", fmt.Sprintf("%d:v", videoIdx),
+			"-map", "[audio_out]",
+		}
+	} else if audioIdx != -1 {
+		mapArgs = []string{
+			"-map", fmt.Sprintf("%d:v", videoIdx),
+			"-map", fmt.Sprintf("%d:a", audioIdx),
+		}
+	} else if bgmIdx != -1 {
+		filterComplex = []string{
+			"-filter_complex",
+			fmt.Sprintf("[%d:a]volume=%.4f[audio_out]", bgmIdx, bgmVolume),
+		}
+		mapArgs = []string{
+			"-map", fmt.Sprintf("%d:v", videoIdx),
+			"-map", "[audio_out]",
+		}
+	} else {
+		mapArgs = []string{
+			"-map", fmt.Sprintf("%d:v", videoIdx),
+		}
 	}
 
+	return inputArgs, filterComplex, mapArgs, nextIdx
+}
+
+func NewPipe(outputPath, audioPath, assPath, bgmPath string, bgmVolume float64, width, height, fps int, duration float64, metadataPath string, fastMode bool) (*Pipe, error) {
 	args := []string{
 		"-y",
 		"-f", "rawvideo",
@@ -37,30 +70,26 @@ func NewPipe(outputPath, audioPath, assPath, bgmPath string, bgmVolume float64, 
 		"-video_size", fmt.Sprintf("%dx%d", width, height),
 		"-framerate", fmt.Sprintf("%d", fps),
 		"-i", "pipe:0",
-		"-i", audioPath,
 	}
 
-	if hasBGM {
-		args = append(args, "-stream_loop", "-1", "-i", bgmPath)
-	}
+	audioInputs, filterComplex, mapArgs, nextIdx := buildAudioArgs(audioPath, bgmPath, bgmVolume, 0, 1)
+	args = append(args, audioInputs...)
 
+	metaIdx := -1
 	if metadataPath != "" {
 		args = append(args, "-i", metadataPath)
+		metaIdx = nextIdx
+		nextIdx++
 	}
 
 	if assPath != "" {
 		args = append(args, "-vf", fmt.Sprintf("ass=%s", assPath))
 	}
 
-	if hasBGM {
-		args = append(args,
-			"-filter_complex", fmt.Sprintf("[%d:a]volume=%.4f[bgm];[%d:a][bgm]amix=inputs=2:duration=first:dropout_transition=0[audio_out]", bgmIdx, bgmVolume, audioIdx),
-			"-map", fmt.Sprintf("%d:v", videoIdx),
-			"-map", "[audio_out]",
-		)
-	} else {
-		args = append(args, "-map", fmt.Sprintf("%d:v", videoIdx), "-map", fmt.Sprintf("%d:a", audioIdx))
+	if len(filterComplex) > 0 {
+		args = append(args, filterComplex...)
 	}
+	args = append(args, mapArgs...)
 
 	if metadataPath != "" {
 		args = append(args, "-map_metadata", fmt.Sprintf("%d", metaIdx))
@@ -76,9 +105,14 @@ func NewPipe(outputPath, audioPath, assPath, bgmPath string, bgmVolume float64, 
 		"-preset", preset,
 		"-crf", "18",
 		"-pix_fmt", "yuv420p",
-		"-c:a", "aac",
-		"-b:a", "192k",
-		// Use exact duration instead of -shortest to guarantee A/V length match
+	)
+
+	hasAudioMapped := (audioPath != "" || bgmPath != "")
+	if hasAudioMapped {
+		args = append(args, "-c:a", "aac", "-b:a", "192k")
+	}
+
+	args = append(args,
 		"-t", fmt.Sprintf("%.6f", duration),
 		outputPath,
 	)
@@ -115,26 +149,6 @@ func (p *Pipe) Close() error {
 }
 
 func NewPreviewPipe(width, height, fps int, audioPath, bgmPath string, bgmVolume float64, duration float64, metadataPath string) (*Pipe, error) {
-	videoIdx := 0
-	audioIdx := -1
-	bgmIdx := -1
-	metaIdx := -1
-
-	nextIdx := 1
-	if audioPath != "" {
-		audioIdx = nextIdx
-		nextIdx++
-	}
-	hasBGM := bgmPath != ""
-	if hasBGM {
-		bgmIdx = nextIdx
-		nextIdx++
-	}
-	if metadataPath != "" {
-		metaIdx = nextIdx
-		nextIdx++
-	}
-
 	args := []string{
 		"-y",
 		"-f", "rawvideo",
@@ -143,26 +157,21 @@ func NewPreviewPipe(width, height, fps int, audioPath, bgmPath string, bgmVolume
 		"-framerate", fmt.Sprintf("%d", fps),
 		"-i", "pipe:0",
 	}
-	if audioPath != "" {
-		args = append(args, "-i", audioPath)
-	}
-	if hasBGM {
-		args = append(args, "-stream_loop", "-1", "-i", bgmPath)
-	}
+
+	audioInputs, filterComplex, mapArgs, nextIdx := buildAudioArgs(audioPath, bgmPath, bgmVolume, 0, 1)
+	args = append(args, audioInputs...)
+
+	metaIdx := -1
 	if metadataPath != "" {
 		args = append(args, "-i", metadataPath)
+		metaIdx = nextIdx
+		nextIdx++
 	}
 
-	if hasBGM && audioPath != "" {
-		args = append(args,
-			"-filter_complex", fmt.Sprintf("[%d:a]volume=%.4f[bgm];[%d:a][bgm]amix=inputs=2:duration=first:dropout_transition=0[audio_out]", bgmIdx, bgmVolume, audioIdx),
-			"-map", fmt.Sprintf("%d:v", videoIdx),
-			"-map", "[audio_out]",
-		)
-	} else if audioPath != "" {
-		// Just map voice audio if BGM not present
-		args = append(args, "-map", fmt.Sprintf("%d:v", videoIdx), "-map", fmt.Sprintf("%d:a", audioIdx))
+	if len(filterComplex) > 0 {
+		args = append(args, filterComplex...)
 	}
+	args = append(args, mapArgs...)
 
 	if metadataPath != "" {
 		args = append(args, "-map_metadata", fmt.Sprintf("%d", metaIdx))
@@ -174,7 +183,8 @@ func NewPreviewPipe(width, height, fps int, audioPath, bgmPath string, bgmVolume
 		"-tune", "zerolatency",
 		"-pix_fmt", "yuv420p",
 	)
-	if audioPath != "" {
+	hasAudioMapped := (audioPath != "" || bgmPath != "")
+	if hasAudioMapped {
 		args = append(args, "-c:a", "aac", "-b:a", "192k")
 	}
 	if duration > 0 {

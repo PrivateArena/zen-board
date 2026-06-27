@@ -105,8 +105,12 @@ func RenderTimeline(conf *model.Project, timeline *model.Timeline, engine *rende
 
 	engine.StartWorkers()
 
-	// Limit to at most 120 frames in-flight (uncompressed RGBA in memory)
-	sem := make(chan struct{}, 120)
+	// Limit to at most workers * 2 frames in-flight (uncompressed RGBA in memory)
+	inFlightLimit := engine.Pool.Workers * 2
+	if inFlightLimit < 8 {
+		inFlightLimit = 8
+	}
+	sem := make(chan struct{}, inFlightLimit)
 
 	// Feed jobs in a goroutine
 	go func() {

@@ -130,3 +130,33 @@ func TestParseTriggerAfterWord(t *testing.T) {
 		t.Errorf("Expected TriggerAfterWord to be true for WAIT")
 	}
 }
+
+func TestParseV3Tags(t *testing.T) {
+	input := `Show [slide:pyramids:fullscreen:fade:fill] and [lower3rd:"Slide Primitive":"Subtitle":3.5:FF5555] and [arrow:TL:BR:curved:0.5] and [highlight:100,200,400,150:pulse:2.0] and [compare:robot:world:"Left":"Right"] and [transition:fade-black:0.8] and [overlay:logo:0.3:BR] and [counter:0:100:2.0:%d]`
+	lines := Parse(input)
+	if len(lines) != 1 {
+		t.Fatalf("Expected 1 line, got %d", len(lines))
+	}
+	actions := lines[0].Actions
+	expectedTags := []string{
+		"slide:pyramids:fullscreen:fade:fill",
+		"lower3rd:\"Slide Primitive\":\"Subtitle\":3.5:FF5555",
+		"arrow:TL:BR:curved:0.5",
+		"highlight:100,200,400,150:pulse:2.0",
+		"compare:robot:world:\"Left\":\"Right\"",
+		"transition:fade-black:0.8",
+		"overlay:logo:0.3:BR",
+		"counter:0:100:2.0:%d",
+	}
+
+	if len(actions) != len(expectedTags) {
+		t.Fatalf("Expected %d actions, got %d", len(expectedTags), len(actions))
+	}
+
+	for i, expected := range expectedTags {
+		if actions[i].Tag != expected {
+			t.Errorf("Action %d tag mismatch: expected %q, got %q", i, expected, actions[i].Tag)
+		}
+	}
+}
+

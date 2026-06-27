@@ -57,6 +57,7 @@ func TestIntegration(t *testing.T) {
 		"-fps", "10", // Low FPS for speed
 		"-w", "100",   // Small resolution
 		"-h", "100",
+		"-tts-cache", filepath.Join(tmpDir, "tts-cache"),
 	}
 
 	err = Run()
@@ -125,6 +126,7 @@ func TestV3Features(t *testing.T) {
 		"-h", "180",
 		"-disable-transcript",
 		"-freeze", "15",
+		"-tts-cache", filepath.Join(tmpDir, "tts-cache"),
 	}
 
 	err = Run()
@@ -184,6 +186,7 @@ func TestIntegrationDisableTranscript(t *testing.T) {
 		"-w", "100",
 		"-h", "100",
 		"-disable-transcript",
+		"-tts-cache", filepath.Join(tmpDir, "tts-cache"),
 	}
 
 	err = Run()
@@ -259,6 +262,7 @@ All done.`
 		"-fps", "10",
 		"-w", "100",
 		"-h", "100",
+		"-tts-cache", filepath.Join(tmpDir, "tts-cache"),
 	}
 
 	err = Run()
@@ -317,6 +321,7 @@ func TestIntegrationFastMode(t *testing.T) {
 		"-w", "100",
 		"-h", "100",
 		"-fast",
+		"-tts-cache", filepath.Join(tmpDir, "tts-cache"),
 	}
 
 	err = Run()

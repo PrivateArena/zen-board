@@ -61,3 +61,5 @@ node_modules/
 *.jpeg
 .tts_cache/
 
+.scratch/
+_scratch/

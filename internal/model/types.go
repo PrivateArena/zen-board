@@ -74,6 +74,21 @@ type FrameEvent struct {
 	// Slide-specific fields
 	Transition string  // "none","fade","pop","slide-left","slide-right","slide-up","slide-down"
 	FitMode    string  // "fit","fill","stretch"
+	// Extended media fields
+	Opacity        float64
+	ColorHex       string
+	ArrowFrom      string
+	ArrowTo        string
+	ArrowStyle     string
+	HighlightStyle string
+	CompareLeft    string
+	CompareRight   string
+	LabelLeft      string
+	LabelRight     string
+	CounterStart   float64
+	CounterEnd     float64
+	CounterFormat  string
+	TransitionType string
 }
 
 type SubtitleEvent struct {

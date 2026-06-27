@@ -213,6 +213,46 @@ func (e *Engine) RenderFrame(frameNum int, events []model.FrameEvent, cam Camera
 			continue
 		}
 
+		if ev.EventType == "arrow" || ev.EventType == "arrow_static" {
+			handX, handY, active := handleArrowEvent(e, frameNum, ev, buf, visibility)
+			if active && ev.EventType == "arrow" {
+				activeHandX = handX
+				activeHandY = handY
+				handVisible = true
+				if style == "blackboard" || style == "glassboard" {
+					activeHandStyle = "chalk"
+				} else {
+					activeHandStyle = "marker"
+				}
+			}
+			continue
+		}
+
+		if ev.EventType == "highlight" {
+			handleHighlightEvent(e, frameNum, ev, buf, visibility)
+			continue
+		}
+
+		if ev.EventType == "compare" {
+			handleCompareEvent(e, frameNum, ev, buf, visibility, style)
+			continue
+		}
+
+		if ev.EventType == "overlay" {
+			handleOverlayEvent(e, frameNum, ev, buf, visibility)
+			continue
+		}
+
+		if ev.EventType == "transition" {
+			handleTransitionEvent(e, frameNum, ev, buf, visibility)
+			continue
+		}
+
+		if ev.EventType == "counter" {
+			handleCounterEvent(e, frameNum, ev, buf, visibility, style)
+			continue
+		}
+
 		e.AssetMu.RLock()
 		img, ok := e.Assets[ev.TargetImage]
 		e.AssetMu.RUnlock()
@@ -536,6 +576,23 @@ func handleSlideEvent(e *Engine, frameNum int, ev model.FrameEvent, buf *image.R
 	renderX = ev.X + (ev.Width-renderW)/2
 	renderY = ev.Y + (ev.Height-renderH)/2
 
+	// Scale the asset to the computed render dimensions if needed
+	if renderW > 0 && renderH > 0 && (renderW != rawW || renderH != rawH) {
+		key := fmt.Sprintf("%s_%d_%d", ev.TargetImage, renderW, renderH)
+		e.AssetMu.RLock()
+		scaledImg, ok := e.ScaledAssets[key]
+		e.AssetMu.RUnlock()
+		if ok {
+			img = scaledImg
+		} else {
+			scaledImg = scaleImage(img, renderW, renderH)
+			e.AssetMu.Lock()
+			e.ScaledAssets[key] = scaledImg
+			e.AssetMu.Unlock()
+			img = scaledImg
+		}
+	}
+
 	progress := float64(frameNum-ev.StartFrame) / float64(ev.EndFrame-ev.StartFrame)
 	if progress > 1.0 {
 		progress = 1.0
@@ -575,17 +632,17 @@ func handleSlideEvent(e *Engine, frameNum int, ev model.FrameEvent, buf *image.R
 			locY = renderY - (drawH-renderH)/2
 			img = scaleImageProgress(img, drawW, drawH, easedFrameProgress)
 		case "slide-left":
-			locX = ev.X + ev.Width + int(float64(ev.Width)*(1.0-easedFrameProgress))
+			locX = renderX + int(float64(ev.X+ev.Width-renderX)*(1.0-easedFrameProgress))
 			locY = renderY
 		case "slide-right":
-			locX = ev.X - int(float64(ev.Width)*(1.0-easedFrameProgress))
+			locX = renderX - int(float64(renderX+drawW-ev.X)*(1.0-easedFrameProgress))
 			locY = renderY
 		case "slide-up":
 			locX = renderX
-			locY = ev.Y + ev.Height + int(float64(ev.Height)*(1.0-easedFrameProgress))
+			locY = renderY + int(float64(ev.Y+ev.Height-renderY)*(1.0-easedFrameProgress))
 		case "slide-down":
 			locX = renderX
-			locY = ev.Y - int(float64(ev.Height)*(1.0-easedFrameProgress))
+			locY = renderY - int(float64(renderY+drawH-ev.Y)*(1.0-easedFrameProgress))
 		}
 	}
 
@@ -608,7 +665,8 @@ func handleLower3rdEvent(e *Engine, frameNum int, ev model.FrameEvent, buf *imag
 	var subtitle string
 	var colorHex string
 
-	parts := strings.SplitN(ev.TargetImage, "|", 3)
+	rest := strings.TrimPrefix(ev.TargetImage, "__lower3rd_")
+	parts := strings.SplitN(rest, "|", 3)
 	title = parts[0]
 	if len(parts) > 1 {
 		subtitle = parts[1]
@@ -746,14 +804,10 @@ func invertImageColors(src image.Image) image.Image {
 			c := src.At(x, y)
 			rgba := color.RGBAModel.Convert(c).(color.RGBA)
 			if rgba.A > 0 {
-				f := float64(rgba.A) / 255.0
-				r := uint8(f * float64(rgba.R))
-				g := uint8(f * float64(rgba.G))
-				b := uint8(f * float64(rgba.B))
 				dst.Set(x, y, color.RGBA{
-					R: 255 - r,
-					G: 255 - g,
-					B: 255 - b,
+					R: 255 - rgba.R,
+					G: 255 - rgba.G,
+					B: 255 - rgba.B,
 					A: rgba.A,
 				})
 			} else {

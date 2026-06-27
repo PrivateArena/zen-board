@@ -19,9 +19,15 @@ var (
 	styleRegex    = regexp.MustCompile(`\[style:([^\]]+)\]`)
 	chapterRegex  = regexp.MustCompile(`\[chapter:([^\]]+)\]`)
 	sfxRegex      = regexp.MustCompile(`\[sfx:([^\]]+)\]`)
-	subtitleRegex = regexp.MustCompile(`\[subtitle:([^\]]+)\]`)
-	slideRegex    = regexp.MustCompile(`^\[slide:([^:]+)(?::([^:\]]+))?(?::([^\]]+))?\]$`)
-	lower3rdRegex = regexp.MustCompile(`^\[lower3rd:([^\]]+)\]$`)
+	subtitleRegex   = regexp.MustCompile(`\[subtitle:([^\]]+)\]`)
+	slideRegex      = regexp.MustCompile(`\[slide:([^\]]+)\]`)
+	lower3rdRegex   = regexp.MustCompile(`\[lower3rd:([^\]]+)\]`)
+	arrowRegex      = regexp.MustCompile(`\[arrow:([^\]]+)\]`)
+	highlightRegex  = regexp.MustCompile(`\[highlight:([^\]]+)\]`)
+	compareRegex    = regexp.MustCompile(`\[compare:([^\]]+)\]`)
+	transitionRegex = regexp.MustCompile(`\[transition:([^\]]+)\]`)
+	overlayRegex    = regexp.MustCompile(`\[overlay:([^\]]+)\]`)
+	counterRegex    = regexp.MustCompile(`\[counter:([^\]]+)\]`)
 )
 
 func Parse(input string) []model.ScriptLine {
@@ -114,43 +120,37 @@ func extractActions(line string) (string, []model.DrawAction) {
 		}
 	}
 
+	extractComplexTag := func(re *regexp.Regexp, prefix string) {
+		matches := re.FindAllStringSubmatchIndex(line, -1)
+		for _, m := range matches {
+			rawContent := line[m[2]:m[3]]
+			parts := parseQuotedStringParts(rawContent)
+			tag := prefix
+			for i, p := range parts {
+				if i == 0 {
+					tag += p
+				} else {
+					tag += ":" + p
+				}
+			}
+			tags = append(tags, tagInfo{start: m[0], end: m[1], tag: tag})
+		}
+	}
+
 	extractStandardTag(drawRegex, "")
 	extractStandardTag(textRegex, "text:")
 	extractStandardTag(eraseRegex, "erase:")
 	extractStandardTag(moveRegex, "move:")
 	extractStandardTag(genRegex, "gen:")
 
-	slideMatches := slideRegex.FindAllStringSubmatchIndex(line, -1)
-	for _, m := range slideMatches {
-		asset := line[m[2]:m[3]]
-		preset := ""
-		if m[4] != -1 && m[5] != -1 {
-			preset = line[m[4]:m[5]]
-		}
-		transition := "none"
-		if m[6] != -1 && m[7] != -1 {
-			transition = line[m[6]:m[7]]
-		}
-		tag := "slide:" + asset
-		if preset != "" {
-			tag += ":" + preset
-		}
-		if transition != "" && transition != "none" {
-			tag += ":" + transition
-		}
-		tags = append(tags, tagInfo{start: m[0], end: m[1], tag: tag})
-	}
-
-	lower3rdMatches := lower3rdRegex.FindAllStringSubmatchIndex(line, -1)
-	for _, m := range lower3rdMatches {
-		rawContent := line[m[2]:m[3]]
-		parts := parseQuotedStringParts(rawContent)
-		tag := "lower3rd"
-		for _, p := range parts {
-			tag += ":" + p
-		}
-		tags = append(tags, tagInfo{start: m[0], end: m[1], tag: tag})
-	}
+	extractComplexTag(slideRegex, "slide:")
+	extractComplexTag(lower3rdRegex, "lower3rd:")
+	extractComplexTag(arrowRegex, "arrow:")
+	extractComplexTag(highlightRegex, "highlight:")
+	extractComplexTag(compareRegex, "compare:")
+	extractComplexTag(transitionRegex, "transition:")
+	extractComplexTag(overlayRegex, "overlay:")
+	extractComplexTag(counterRegex, "counter:")
 
 	extractSimpleTag(zoomRegex, "zoom:")
 	extractSimpleTag(styleRegex, "style:")
