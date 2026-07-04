@@ -75,6 +75,8 @@ func BatchGenerate(assetsDir, promptsFile, style, lightsAddr string) error {
 			styledPrompt = fmt.Sprintf("vector icon of %s, hand-drawn whiteboard sketch, black ink lines, transparent background, educational, simple", p)
 		} else if style == "realistic" {
 			styledPrompt = fmt.Sprintf("%s, realistic style photograph, studio lighting, isolated on solid white background", p)
+		} else if style == "comic" {
+			styledPrompt = fmt.Sprintf("Franco-Belgian ligne claire comic illustration, bold black ink outlines, flat color, caricature of %s, exaggerated comic proportions, isolated character, pure solid white background, full body, centered, no cropping", p)
 		}
 
 		fmt.Printf("Generating %q using prompt: %q\n", slug, styledPrompt)
@@ -102,15 +104,18 @@ func BatchGenerate(assetsDir, promptsFile, style, lightsAddr string) error {
 		}
 
 		// Try to run auto-background removal if we just generated it and it has a background
-		if hasBg && style == "vector" {
-			fmt.Printf("  Vector asset has background, attempting background removal...\n")
+		if hasBg && (style == "vector" || style == "comic") {
+			fmt.Printf("  Asset has background, attempting background removal...\n")
 			// Try lights or rembg
 			if err := removeBgRembg(destPath); err == nil {
 				entry.HasBg = false
-				fmt.Println("  Successfully removed background.")
+				fmt.Println("  Successfully removed background via rembg.")
 			} else if err := removeBgLights(destPath, lightsAddr); err == nil {
 				entry.HasBg = false
-				fmt.Println("  Successfully removed background.")
+				fmt.Println("  Successfully removed background via zen-lights.")
+			} else if err := removeBgChromaKey(destPath); err == nil {
+				entry.HasBg = false
+				fmt.Println("  Successfully removed background via local chromakey.")
 			} else {
 				fmt.Println("  Background removal failed. Flagged as has_bg: true.")
 			}

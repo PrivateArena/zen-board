@@ -199,6 +199,8 @@ func StartServer(assetsDir string, port int, lightsAddr string) error {
 			styledPrompt = fmt.Sprintf("vector icon of %s, hand-drawn whiteboard sketch, black ink lines, transparent background, educational, simple", req.Prompt)
 		} else if req.Style == "realistic" {
 			styledPrompt = fmt.Sprintf("%s, realistic style photograph, studio lighting, isolated on solid white background", req.Prompt)
+		} else if req.Style == "comic" {
+			styledPrompt = fmt.Sprintf("Franco-Belgian ligne claire comic illustration, bold black ink outlines, flat color, caricature of %s, exaggerated comic proportions, isolated character, pure solid white background, full body, centered, no cropping", req.Prompt)
 		}
 
 		if err := GenerateSingleAsset(styledPrompt, destPath, lightsAddr); err != nil {
@@ -209,8 +211,8 @@ func StartServer(assetsDir string, port int, lightsAddr string) error {
 		hasBg := checkPNGHasBackground(destPath)
 		width, height, _ := getImageDimensions(destPath)
 
-		// Auto background removal for vector style
-		if hasBg && req.Style == "vector" {
+		// Auto background removal for vector or comic style
+		if hasBg && (req.Style == "vector" || req.Style == "comic") {
 			if err := removeBgChromaKey(destPath); err == nil {
 				hasBg = false
 			} else if err := removeBgRembg(destPath); err == nil {
@@ -737,6 +739,7 @@ const htmlTemplateRaw = `<!DOCTYPE html>
                 <select id="gen-style" class="select-input">
                     <option value="vector">Whiteboard Sketch (Vector)</option>
                     <option value="realistic">Realistic Photograph (Studio)</option>
+                    <option value="comic">2D Comic Caricature (Comic)</option>
                 </select>
             </div>
             <button class="btn" style="width: 100%; justify-content: center;" id="gen-btn" onclick="generateAsset()">
@@ -752,6 +755,7 @@ const htmlTemplateRaw = `<!DOCTYPE html>
                     <button class="tab-btn" id="tab-needs-bg" onclick="filterAssets('needs-bg')">Needs Bg Removal</button>
                     <button class="tab-btn" id="tab-transparent" onclick="filterAssets('transparent')">Transparent (Ready)</button>
                     <button class="tab-btn" id="tab-vector" onclick="filterAssets('vector')">Vector</button>
+                    <button class="tab-btn" id="tab-comic" onclick="filterAssets('comic')">Comic</button>
                 </div>
                 <div style="font-size: 0.875rem; color: var(--text-muted);">
                     <span id="filtered-count">0</span> matching assets
@@ -783,6 +787,7 @@ const htmlTemplateRaw = `<!DOCTYPE html>
                     <select id="edit-style" class="select-input">
                         <option value="vector">Vector</option>
                         <option value="realistic">Realistic</option>
+                        <option value="comic">Comic</option>
                     </select>
                 </div>
                 <div class="form-group">
@@ -830,6 +835,8 @@ const htmlTemplateRaw = `<!DOCTYPE html>
                 filtered = allAssets.filter(a => !a.has_bg);
             } else if (currentFilter === 'vector') {
                 filtered = allAssets.filter(a => a.style === 'vector');
+            } else if (currentFilter === 'comic') {
+                filtered = allAssets.filter(a => a.style === 'comic');
             }
 
             document.getElementById('filtered-count').textContent = filtered.length;
