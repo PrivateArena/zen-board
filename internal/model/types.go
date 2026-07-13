@@ -44,14 +44,15 @@ type ScriptLine struct {
 }
 
 type DrawAction struct {
-	Tag              string  // e.g. "king_death"
-	WordIndex        int     // Trigger after this word finishes
-	ImagePath        string  // Resolved path to asset PNG
+	Tag              string            // e.g. "king_death"
+	WordIndex        int               // Trigger after this word finishes
+	ImagePath        string            // Resolved path to asset PNG
 	X, Y             int
 	W, H             int
-	RevealDuration   float64 // custom duration in seconds
-	TriggerAfterWord bool    // trigger after word end instead of start
-	GenPrompt        string  // prompt for image generation
+	RevealDuration   float64           // custom duration in seconds
+	TriggerAfterWord bool              // trigger after word end instead of start
+	GenPrompt        string            // prompt for image generation
+	AssetVariant     map[string]string // SVG variant modifications: key=value pairs
 }
 
 type WordTiming struct {
@@ -89,6 +90,8 @@ type FrameEvent struct {
 	CounterEnd     float64
 	CounterFormat  string
 	TransitionType string
+	// SVG variant modifications: key=value pairs for dynamic asset customization
+	AssetVariant map[string]string
 }
 
 type SubtitleEvent struct {

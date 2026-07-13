@@ -8,7 +8,7 @@ import (
 )
 
 var (
-	drawRegex     = regexp.MustCompile(`\[draw:([^\]@]+)(?:@([\d,]+))?\]`)
+	drawRegex     = regexp.MustCompile(`\[draw:([^\]@:]+)((?:[:\w-]+(?:=[^\]@:]+)?)*)(?:@([\d,]+))?\]`)
 	textRegex     = regexp.MustCompile(`\[text:([^\]@]+)(?:@([\d,]+))?\]`)
 	eraseRegex    = regexp.MustCompile(`\[erase:([^\]@]+)(?:@([\d,]+))?\]`)
 	moveRegex     = regexp.MustCompile(`\[move:([^\]@]+)(?:@([\d,]+))?\]`)
@@ -86,11 +86,56 @@ func extractActions(line string) (string, []model.DrawAction) {
 		isWait     bool
 		waitVal    float64
 		x, y, w, h int
+		variants   map[string]string
 	}
 
 	var tags []tagInfo
 	cleanBuilder := strings.Builder{}
 	lastPos := 0
+
+	extractDrawTag := func() {
+		matches := drawRegex.FindAllStringSubmatchIndex(line, -1)
+		for _, m := range matches {
+			assetID := line[m[2]:m[3]]
+			tag := assetID
+			variants := make(map[string]string)
+			if len(m) >= 5 && m[4] != -1 && m[5] != -1 {
+				rawVariants := line[m[4]:m[5]]
+				if rawVariants != "" {
+					vparts := strings.Split(rawVariants, ":")
+					for _, vp := range vparts {
+						vp = strings.TrimSpace(vp)
+						if vp == "" {
+							continue
+						}
+						kv := strings.SplitN(vp, "=", 2)
+						if len(kv) == 2 && kv[1] != "" {
+							variants[strings.TrimSpace(kv[0])] = strings.TrimSpace(kv[1])
+						} else {
+							if tag == assetID {
+								tag = assetID + ":" + vp
+							} else {
+								tag = tag + ":" + vp
+							}
+						}
+					}
+				}
+			}
+			ti := tagInfo{start: m[0], end: m[1], tag: tag, variants: variants}
+			if len(m) >= 8 && m[6] != -1 && m[7] != -1 {
+				coords := strings.Split(line[m[6]:m[7]], ",")
+				if len(coords) >= 2 {
+					ti.x, _ = strconv.Atoi(coords[0])
+					ti.y, _ = strconv.Atoi(coords[1])
+				}
+				if len(coords) >= 4 {
+					ti.w, _ = strconv.Atoi(coords[2])
+					ti.h, _ = strconv.Atoi(coords[3])
+				}
+			}
+			tags = append(tags, ti)
+		}
+	}
 
 	extractStandardTag := func(re *regexp.Regexp, prefix string) {
 		matches := re.FindAllStringSubmatchIndex(line, -1)
@@ -137,7 +182,7 @@ func extractActions(line string) (string, []model.DrawAction) {
 		}
 	}
 
-	extractStandardTag(drawRegex, "")
+	extractDrawTag()
 	extractStandardTag(textRegex, "text:")
 	extractStandardTag(eraseRegex, "erase:")
 	extractStandardTag(moveRegex, "move:")
@@ -204,6 +249,7 @@ func extractActions(line string) (string, []model.DrawAction) {
 				W:                t.w,
 				H:                t.h,
 				TriggerAfterWord: triggerAfter,
+				AssetVariant:     t.variants,
 			})
 		}
 

@@ -101,6 +101,7 @@ func NewPipe(outputPath, audioPath, assPath, bgmPath string, bgmVolume float64, 
 	}
 
 	args = append(args,
+		"-loglevel", "error",
 		"-c:v", "libx264",
 		"-preset", preset,
 		"-crf", "18",
@@ -178,6 +179,7 @@ func NewPreviewPipe(width, height, fps int, audioPath, bgmPath string, bgmVolume
 	}
 
 	args = append(args,
+		"-loglevel", "error",
 		"-c:v", "libx264",
 		"-preset", "ultrafast",
 		"-tune", "zerolatency",

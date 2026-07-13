@@ -16,6 +16,7 @@ import (
 	"zen-board/internal/assets"
 	"zen-board/internal/model"
 	"zen-board/internal/render"
+	"zen-board/internal/svg"
 )
 
 type TextRenderJob struct {
@@ -856,29 +857,31 @@ func CompileTimeline(conf *model.Project, allWordTimings []model.WordTiming, pLi
 
 			// Reveal animation event
 			timeline.Events = append(timeline.Events, model.FrameEvent{
-				TargetImage: actionTag,
-				StartFrame:  startFrame,
-				EndFrame:    endFrame,
-				X:           x,
-				Y:           y,
-				Width:       w,
-				Height:      h,
-				EventType:   "draw",
-				MaskStyle:   "diagonal",
-				HandStyle:   "pencil",
-				ZoomFocus:   drawFocus,
+				TargetImage:  actionTag,
+				StartFrame:   startFrame,
+				EndFrame:     endFrame,
+				X:            x,
+				Y:            y,
+				Width:        w,
+				Height:       h,
+				EventType:    "draw",
+				MaskStyle:    "diagonal",
+				HandStyle:    "pencil",
+				ZoomFocus:    drawFocus,
+				AssetVariant: action.AssetVariant,
 			})
 			// Persistence event: image stays on screen after reveal
 			timeline.Events = append(timeline.Events, model.FrameEvent{
-				TargetImage: actionTag,
-				StartFrame:  endFrame,
-				EndFrame:    999999,
-				X:           x,
-				Y:           y,
-				Width:       w,
-				Height:      h,
-				EventType:   "static",
-				ZoomFocus:   drawFocus,
+				TargetImage:  actionTag,
+				StartFrame:   endFrame,
+				EndFrame:     999999,
+				X:            x,
+				Y:            y,
+				Width:        w,
+				Height:       h,
+				EventType:    "static",
+				ZoomFocus:    drawFocus,
+				AssetVariant: action.AssetVariant,
 			})
 		}
 	}
@@ -1054,9 +1057,10 @@ func PrepareAssets(conf *model.Project, engine *render.Engine, timeline *model.T
 		}
 	}
 
-	// Load standard assets
 	fmt.Println("Loading assets...")
 	seenAssets := make(map[string]bool)
+	svgCache := make(map[string]*image.RGBA)
+
 	for _, ev := range timeline.Events {
 		if ev.EventType == "compare" {
 			for _, imgID := range []string{ev.CompareLeft, ev.CompareRight} {
@@ -1064,8 +1068,11 @@ func PrepareAssets(conf *model.Project, engine *render.Engine, timeline *model.T
 					continue
 				}
 				seenAssets[imgID] = true
-				var assetPath string
+					var assetPath string
 				if entry, ok := assetMap[imgID]; ok {
+					if strings.HasSuffix(entry.File, ".svg") {
+						continue
+					}
 					assetPath = filepath.Join(conf.AssetsDir, entry.File)
 				} else {
 					assetPath = filepath.Join(conf.AssetsDir, imgID+".png")
@@ -1090,6 +1097,9 @@ func PrepareAssets(conf *model.Project, engine *render.Engine, timeline *model.T
 		
 		var assetPath string
 		if entry, ok := assetMap[ev.TargetImage]; ok {
+			if strings.HasSuffix(entry.File, ".svg") {
+				continue
+			}
 			assetPath = filepath.Join(conf.AssetsDir, entry.File)
 		} else {
 			assetPath = filepath.Join(conf.AssetsDir, ev.TargetImage+".png")
@@ -1099,6 +1109,71 @@ func PrepareAssets(conf *model.Project, engine *render.Engine, timeline *model.T
 		if err != nil {
 			log.Printf("Warning: Could not load asset %s: %v", ev.TargetImage, err)
 		}
+	}
+
+	// Process SVG assets (both variant and non-variant)
+	for i := range timeline.Events {
+		ev := &timeline.Events[i]
+		if ev.TargetImage == "" || ev.TargetImage == "clear" || strings.HasPrefix(ev.TargetImage, "__") {
+			continue
+		}
+		if ev.EventType == "arrow" || ev.EventType == "arrow_static" || ev.EventType == "highlight" || ev.EventType == "counter" || ev.EventType == "transition" {
+			continue
+		}
+
+		entry, ok := assetMap[ev.TargetImage]
+		if !ok || !strings.HasSuffix(entry.File, ".svg") {
+			continue
+		}
+
+		fmt.Printf("  SVG event: type=%s target=%s entry=%s w=%d h=%d variants=%v\n",
+			ev.EventType, ev.TargetImage, entry.File, ev.Width, ev.Height, ev.AssetVariant)
+
+		rawSVG, err := os.ReadFile(filepath.Join(conf.AssetsDir, entry.File))
+		if err != nil {
+			return fmt.Errorf("reading svg asset: %w", err)
+		}
+
+		key := svg.CacheKey(rawSVG, ev.AssetVariant, ev.Width, ev.Height)
+		if cached, ok := svgCache[key]; ok {
+			fmt.Printf("  SVG cache hit: %s (type=%s, target=%s)\n", key, ev.EventType, ev.TargetImage)
+			engine.RegisterAsset(key, cached)
+			ev.TargetImage = key
+			continue
+		}
+
+		var rasterXML []byte
+		if len(ev.AssetVariant) > 0 {
+			modifiedXML, err := svg.ModifySVG(rawSVG, ev.AssetVariant)
+			if err != nil {
+				return fmt.Errorf("modifying svg XML: %w", err)
+			}
+			rasterXML = modifiedXML
+		} else {
+			processed, err := svg.PreprocessSVG(rawSVG)
+			if err != nil {
+				return fmt.Errorf("preprocessing svg: %w", err)
+			}
+			rasterXML = processed
+		}
+
+		if ev.Width <= 0 || ev.Height <= 0 {
+			continue
+		}
+
+		cfg := svg.RasterConfig{
+			MaxDimension: 4096,
+		}
+		img, err := svg.RasterizeSVG(rasterXML, ev.Width, ev.Height, cfg)
+		if err != nil {
+			log.Printf("Warning: Could not rasterize SVG %s: %v", ev.TargetImage, err)
+			continue
+		}
+
+		svgCache[key] = img
+		engine.RegisterAsset(key, img)
+		ev.TargetImage = key
+		fmt.Printf("  SVG registered: %s (%dx%d)\n", key, ev.Width, ev.Height)
 	}
 
 	// Render and load all text assets

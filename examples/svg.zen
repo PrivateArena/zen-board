@@ -1,0 +1,10 @@
+Let me show you some SVG icons.
+[draw:activity@100,200,300,300]
+[draw:alert-circle@500,200,300,300]
+[draw:check-circle@900,200,300,300]
+
+Now watch the shield change colors with variants.
+[draw:shield_test:shield-body=#e74c3c:shield-fill=#c0392b:star-shape=#f1c40f@100,500,400,400]
+
+Different shield colors.
+[draw:shield_test:shield-body=#2ecc71:shield-fill=#27ae60:star-shape=#e74c3c@600,500,400,400]
