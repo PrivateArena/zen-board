@@ -23,7 +23,7 @@ func parsePoint(s string, canvasW, canvasH int) (int, int) {
 			return x, y
 		}
 	}
-	px, py, pw, ph := getPresetLayout(s, canvasW, canvasH)
+	px, py, pw, ph := model.GetPresetLayout(s, canvasW, canvasH)
 	return px + pw/2, py + ph/2
 }
 
@@ -39,7 +39,7 @@ func parseRegion(s string, canvasW, canvasH int) (int, int, int, int) {
 			return x, y, w, h
 		}
 	}
-	return getPresetLayout(s, canvasW, canvasH)
+	return model.GetPresetLayout(s, canvasW, canvasH)
 }
 
 func parseHexColor(hex string, def color.RGBA) color.RGBA {
@@ -529,7 +529,7 @@ func handleOverlayEvent(e *Engine, frameNum int, ev model.FrameEvent, buf *image
 	if preset == "fullscreen" || preset == "" {
 		ox, oy, ow, oh = 0, 0, canvasW, canvasH
 	} else {
-		ox, oy, ow, oh = getPresetLayout(preset, canvasW, canvasH)
+		ox, oy, ow, oh = model.GetPresetLayout(preset, canvasW, canvasH)
 	}
 
 	scaled := scaleImage(img, ow, oh)
@@ -584,7 +584,7 @@ func handleCounterEvent(e *Engine, frameNum int, ev model.FrameEvent, buf *image
 
 	canvasW := buf.Bounds().Dx()
 	canvasH := buf.Bounds().Dy()
-	cx, cy, cw, ch := getPresetLayout(ev.ZoomFocus, canvasW, canvasH)
+	cx, cy, cw, ch := model.GetPresetLayout(ev.ZoomFocus, canvasW, canvasH)
 
 	txtImg, err := RenderText(text, "sans", 72, true, colText)
 	if err != nil {
@@ -646,29 +646,4 @@ func addCommas(s string) string {
 	}
 
 	return prefix.String() + strings.Join(result, ",") + suffix.String()
-}
-
-func getPresetLayout(preset string, canvasW, canvasH int) (x, y, w, h int) {
-	halfW := canvasW / 2
-	halfH := canvasH / 2
-	switch preset {
-	case "TL":
-		return 0, 0, halfW, halfH
-	case "TR":
-		return halfW, 0, halfW, halfH
-	case "BL":
-		return 0, halfH, halfW, halfH
-	case "BR":
-		return halfW, halfH, halfW, halfH
-	case "HT":
-		return 0, 0, canvasW, halfH
-	case "HB":
-		return 0, halfH, canvasW, halfH
-	case "LH":
-		return 0, 0, halfW, canvasH
-	case "RH":
-		return halfW, 0, halfW, canvasH
-	default:
-		return 0, 0, canvasW, canvasH
-	}
 }

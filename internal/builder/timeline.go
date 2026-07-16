@@ -260,7 +260,7 @@ func CompileTimeline(conf *model.Project, allWordTimings []model.WordTiming, pLi
 
 					tx, ty, tw, th := action.X, action.Y, action.W, action.H
 					if preset != "" && tx == 0 && ty == 0 && tw == 0 && th == 0 {
-						px, py, pw, ph := getPresetLayout(preset, conf.Width, conf.Height)
+						px, py, pw, ph := model.GetPresetLayout(preset, conf.Width, conf.Height)
 						padW := int(float64(pw) * 0.1)
 						padH := int(float64(ph) * 0.1)
 						tx = px + padW
@@ -389,7 +389,7 @@ func CompileTimeline(conf *model.Project, allWordTimings []model.WordTiming, pLi
 					destX, destY := startX, startY
 					moveFocus := evFocus
 					if destPreset != "" {
-						px, py, pw, ph := getPresetLayout(destPreset, conf.Width, conf.Height)
+						px, py, pw, ph := model.GetPresetLayout(destPreset, conf.Width, conf.Height)
 						padW := int(float64(pw) * 0.1)
 						padH := int(float64(ph) * 0.1)
 						destX = px + padW
@@ -457,7 +457,7 @@ func CompileTimeline(conf *model.Project, allWordTimings []model.WordTiming, pLi
 
 				tx, ty, tw, th := action.X, action.Y, action.W, action.H
 				if preset != "" && tx == 0 && ty == 0 && tw == 0 && th == 0 {
-					px, py, pw, ph := getPresetLayout(preset, conf.Width, conf.Height)
+					px, py, pw, ph := model.GetPresetLayout(preset, conf.Width, conf.Height)
 					padW := int(float64(pw) * 0.1)
 					padH := int(float64(ph) * 0.1)
 					tx = px + padW
@@ -537,7 +537,7 @@ func CompileTimeline(conf *model.Project, allWordTimings []model.WordTiming, pLi
 				sh = conf.Height
 			}
 			if preset != "" && sx == 0 && sy == 0 {
-				px, py, pw, ph := getPresetLayout(preset, conf.Width, conf.Height)
+				px, py, pw, ph := model.GetPresetLayout(preset, conf.Width, conf.Height)
 				sx, sy = px, py
 				sw, sh = pw, ph
 			}
@@ -827,7 +827,7 @@ func CompileTimeline(conf *model.Project, allWordTimings []model.WordTiming, pLi
 		w, h := action.W, action.H
 
 			if preset != "" && x == 0 && y == 0 && w == 0 && h == 0 {
-				px, py, pw, ph := getPresetLayout(preset, conf.Width, conf.Height)
+				px, py, pw, ph := model.GetPresetLayout(preset, conf.Width, conf.Height)
 				padW := int(float64(pw) * 0.1)
 				padH := int(float64(ph) * 0.1)
 				w = pw - 2*padW
@@ -973,31 +973,6 @@ func unquote(s string) string {
 		return s[1 : len(s)-1]
 	}
 	return s
-}
-
-func getPresetLayout(preset string, canvasW, canvasH int) (x, y, w, h int) {
-	halfW := canvasW / 2
-	halfH := canvasH / 2
-	switch preset {
-	case "TL":
-		return 0, 0, halfW, halfH
-	case "TR":
-		return halfW, 0, halfW, halfH
-	case "BL":
-		return 0, halfH, halfW, halfH
-	case "BR":
-		return halfW, halfH, halfW, halfH
-	case "HT":
-		return 0, 0, canvasW, halfH
-	case "HB":
-		return 0, halfH, canvasW, halfH
-	case "LH":
-		return 0, 0, halfW, canvasH
-	case "RH":
-		return halfW, 0, halfW, canvasH
-	default:
-		return 0, 0, canvasW, canvasH
-	}
 }
 
 type PaintGenRequest struct {
