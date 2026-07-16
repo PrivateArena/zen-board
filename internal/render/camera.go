@@ -4,6 +4,8 @@ import (
 	"image"
 	"image/color"
 	"math"
+
+	"zen-board/internal/model"
 )
 
 type CameraState struct {
@@ -14,38 +16,20 @@ type CameraState struct {
 }
 
 func GetPresetViewport(preset string, canvasW, canvasH int) CameraState {
-	fW := float64(canvasW)
-	fH := float64(canvasH)
 	pName := preset
 	if pName == "" {
 		pName = "reset"
 	}
-	var res CameraState
-	switch preset {
-	case "TL":
-		res = CameraState{X: 0, Y: 0, W: fW / 2, H: fH / 2}
-	case "TR":
-		res = CameraState{X: fW / 2, Y: 0, W: fW / 2, H: fH / 2}
-	case "BL":
-		res = CameraState{X: 0, Y: fH / 2, W: fW / 2, H: fH / 2}
-	case "BR":
-		res = CameraState{X: fW / 2, Y: fH / 2, W: fW / 2, H: fH / 2}
-	case "HT":
-		res = CameraState{X: 0, Y: 0, W: fW, H: fH / 2}
-	case "HB":
-		res = CameraState{X: 0, Y: fH / 2, W: fW, H: fH / 2}
-	case "LH":
-		res = CameraState{X: 0, Y: 0, W: fW / 2, H: fH}
-	case "RH":
-		res = CameraState{X: fW / 2, Y: 0, W: fW / 2, H: fH}
-	default:
-		res = CameraState{X: 0, Y: 0, W: fW, H: fH}
-		pName = "reset"
+	x, y, w, h := model.GetPresetLayout(preset, canvasW, canvasH)
+	return CameraState{
+		X:            float64(x),
+		Y:            float64(y),
+		W:            float64(w),
+		H:            float64(h),
+		SourcePreset: pName,
+		TargetPreset: pName,
+		TransitionT:  1.0,
 	}
-	res.SourcePreset = pName
-	res.TargetPreset = pName
-	res.TransitionT = 1.0
-	return res
 }
 
 func LerpCamera(start, end CameraState, t float64) CameraState {
