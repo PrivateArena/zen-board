@@ -6,7 +6,6 @@ import (
 	"math"
 )
 
-
 type CameraState struct {
 	X, Y, W, H   float64
 	SourcePreset string
@@ -142,4 +141,3 @@ func CropAndScale(src *image.RGBA, cam CameraState, targetW, targetH int, fastMo
 	}
 	return dst
 }
-

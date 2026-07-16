@@ -135,7 +135,7 @@ func drawBezierArrow(img *image.RGBA, p0, p1, p2 image.Point, progress float64, 
 	dy01 := float64(p1.Y - p0.Y)
 	dx12 := float64(p2.X - p1.X)
 	dy12 := float64(p2.Y - p1.Y)
-	L := math.Sqrt(dx01*dx01 + dy01*dy01) + math.Sqrt(dx12*dx12 + dy12*dy12)
+	L := math.Sqrt(dx01*dx01+dy01*dy01) + math.Sqrt(dx12*dx12+dy12*dy12)
 
 	steps := int(L * 2)
 	if steps < 10 {
@@ -216,12 +216,7 @@ func handleArrowEvent(e *Engine, frameNum int, ev model.FrameEvent, buf *image.R
 
 	progress := 1.0
 	if ev.EventType == "arrow" {
-		if ev.EndFrame > ev.StartFrame {
-			progress = float64(frameNum-ev.StartFrame) / float64(ev.EndFrame-ev.StartFrame)
-			if progress > 1.0 {
-				progress = 1.0
-			}
-		}
+		progress = CalcProgress(frameNum, ev.StartFrame, ev.EndFrame)
 	}
 
 	col := color.RGBA{R: 235, G: 64, B: 52, A: 255}
@@ -247,19 +242,13 @@ func handleArrowEvent(e *Engine, frameNum int, ev model.FrameEvent, buf *image.R
 func handleHighlightEvent(e *Engine, frameNum int, ev model.FrameEvent, buf *image.RGBA, visibility float64) {
 	x, y, w, h := parseRegion(ev.TargetImage, buf.Bounds().Dx(), buf.Bounds().Dy())
 
-	progress := 1.0
-	if ev.EndFrame > ev.StartFrame {
-		progress = float64(frameNum-ev.StartFrame) / float64(ev.EndFrame-ev.StartFrame)
-		if progress > 1.0 {
-			progress = 1.0
-		}
-	}
+	progress := CalcProgress(frameNum, ev.StartFrame, ev.EndFrame)
 
 	col := color.RGBA{R: 255, G: 165, B: 0, A: 255}
 	if ev.ColorHex != "" {
 		col = parseHexColor(ev.ColorHex, col)
 	}
-	col.A = uint8(float64(col.A) * visibility)
+	col = ApplyAlpha(col, visibility)
 
 	style := ev.HighlightStyle
 	if style == "" {
@@ -446,27 +435,19 @@ func handleCompareEvent(e *Engine, frameNum int, ev model.FrameEvent, buf *image
 	scaledLeft := scaleImageFill(leftImg, halfW, canvasH)
 	scaledRight := scaleImageFill(rightImg, halfW, canvasH)
 
-	var bg image.Image
-	switch style {
-	case "blackboard":
-		bg = image.NewUniform(color.RGBA{15, 15, 15, 255})
-	case "glassboard":
-		bg = image.NewUniform(color.RGBA{24, 28, 37, 255})
-	default:
-		bg = image.NewUniform(color.RGBA{255, 255, 255, 255})
-	}
+	bg := ResolveStyleBg(style)
 
 	if visibility >= 1.0 {
 		draw.Draw(buf, leftDest, bg, image.Point{}, draw.Src)
 		draw.Draw(buf, rightDest, bg, image.Point{}, draw.Src)
-		draw.Draw(buf, leftDest, scaledLeft, image.Point{}, draw.Over)
-		draw.Draw(buf, rightDest, scaledRight, image.Point{}, draw.Over)
+		DrawWithMask(buf, leftDest, scaledLeft, 1.0)
+		DrawWithMask(buf, rightDest, scaledRight, 1.0)
 	} else {
 		mask := image.NewUniform(color.Alpha{A: uint8(visibility * 255)})
 		draw.DrawMask(buf, leftDest, bg, image.Point{}, mask, image.Point{}, draw.Over)
 		draw.DrawMask(buf, rightDest, bg, image.Point{}, mask, image.Point{}, draw.Over)
-		draw.DrawMask(buf, leftDest, scaledLeft, image.Point{}, mask, image.Point{}, draw.Over)
-		draw.DrawMask(buf, rightDest, scaledRight, image.Point{}, mask, image.Point{}, draw.Over)
+		DrawWithMask(buf, leftDest, scaledLeft, visibility)
+		DrawWithMask(buf, rightDest, scaledRight, visibility)
 	}
 
 	colBorder := color.RGBA{R: 240, G: 240, B: 240, A: 255}
@@ -485,14 +466,10 @@ func handleCompareEvent(e *Engine, frameNum int, ev model.FrameEvent, buf *image
 }
 
 func drawCompareLabel(buf *image.RGBA, text string, x, y int, isLeft bool, style string, visibility float64) {
-	colText := color.RGBA{R: 0, G: 0, B: 0, A: 255}
-	colBg := color.RGBA{R: 255, G: 255, B: 255, A: 220}
-	if style == "blackboard" || style == "glassboard" {
-		colText = color.RGBA{R: 255, G: 255, B: 255, A: 255}
-		colBg = color.RGBA{R: 20, G: 20, B: 20, A: 220}
-	}
-	colText.A = uint8(float64(colText.A) * visibility)
-	colBg.A = uint8(float64(colBg.A) * visibility)
+	colText := ResolveStyleTextColor(style)
+	colBg := ResolveStyleBgColor(style)
+	colText = ApplyAlpha(colText, visibility)
+	colBg = ApplyAlpha(colBg, visibility)
 
 	txtImg, err := RenderText(text, "sans", 28, true, colText)
 	if err != nil {
@@ -534,20 +511,12 @@ func handleOverlayEvent(e *Engine, frameNum int, ev model.FrameEvent, buf *image
 
 	scaled := scaleImage(img, ow, oh)
 	destRect := image.Rect(ox, oy, ox+ow, oy+oh)
-	alpha := ev.Opacity * visibility
 
-	maskUniform := image.NewUniform(color.Alpha{A: uint8(alpha * 255)})
-	draw.DrawMask(buf, destRect, scaled, image.Point{}, maskUniform, image.Point{}, draw.Over)
+	DrawWithMask(buf, destRect, scaled, ev.Opacity*visibility)
 }
 
 func handleTransitionEvent(e *Engine, frameNum int, ev model.FrameEvent, buf *image.RGBA, visibility float64) {
-	progress := 0.0
-	if ev.EndFrame > ev.StartFrame {
-		progress = float64(frameNum-ev.StartFrame) / float64(ev.EndFrame-ev.StartFrame)
-		if progress > 1.0 {
-			progress = 1.0
-		}
-	}
+	progress := CalcProgress(frameNum, ev.StartFrame, ev.EndFrame)
 
 	var opacity float64
 	if progress < 0.5 {
@@ -565,22 +534,13 @@ func handleTransitionEvent(e *Engine, frameNum int, ev model.FrameEvent, buf *im
 }
 
 func handleCounterEvent(e *Engine, frameNum int, ev model.FrameEvent, buf *image.RGBA, visibility float64, style string) {
-	progress := 1.0
-	if ev.EndFrame > ev.StartFrame {
-		progress = float64(frameNum-ev.StartFrame) / float64(ev.EndFrame-ev.StartFrame)
-		if progress > 1.0 {
-			progress = 1.0
-		}
-	}
+	progress := CalcProgress(frameNum, ev.StartFrame, ev.EndFrame)
 
 	val := ev.CounterStart + (ev.CounterEnd-ev.CounterStart)*progress
 	text := formatValue(val, ev.CounterFormat)
 
-	colText := color.RGBA{R: 0, G: 0, B: 0, A: 255}
-	if style == "blackboard" || style == "glassboard" {
-		colText = color.RGBA{R: 255, G: 255, B: 255, A: 255}
-	}
-	colText.A = uint8(float64(colText.A) * visibility)
+	colText := ResolveStyleTextColor(style)
+	colText = ApplyAlpha(colText, visibility)
 
 	canvasW := buf.Bounds().Dx()
 	canvasH := buf.Bounds().Dy()

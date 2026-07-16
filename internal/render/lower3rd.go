@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"image"
 	"image/color"
-	"math"
 	"strings"
 
 	"golang.org/x/image/font"
@@ -93,17 +92,6 @@ func truncateText(s string, n int) string {
 		return string(r[:n]) + "…"
 	}
 	return s
-}
-
-func easeOutCubic(t float64) float64 {
-	return 1.0 - math.Pow(1.0-t, 3.0)
-}
-
-func easeInOutCubic(t float64) float64 {
-	if t < 0.5 {
-		return 4.0 * t * t * t
-	}
-	return 1.0 - math.Pow(-2.0*t+2.0, 3.0)/2.0
 }
 
 func roundedRect(dst *image.RGBA, x, y, w, h, r int, c color.RGBA) {

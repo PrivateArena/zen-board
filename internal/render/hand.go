@@ -17,7 +17,7 @@ var styleAngle = map[string]int{
 	"default": 0,
 	"pencil":  0,
 	"chalk":   5,
-	"marker": -10,
+	"marker":  -10,
 	"eraser":  0,
 }
 
@@ -64,9 +64,9 @@ func NewHandRenderer(path string, origTipX, origTipY int) (*HandRenderer, error)
 	scaledTipY := int(math.Round(float64(origTipY) * 256.0 / float64(origH)))
 
 	hr := &HandRenderer{
-		Sprites:  sprites,
-		TipX:     scaledTipX,
-		TipY:     scaledTipY,
+		Sprites: sprites,
+		TipX:    scaledTipX,
+		TipY:    scaledTipY,
 	}
 	hr.buildRotCache()
 	return hr, nil

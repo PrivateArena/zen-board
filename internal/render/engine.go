@@ -5,7 +5,6 @@ import (
 	"image"
 	"image/color"
 	"image/draw"
-	"math"
 	"os"
 	"strings"
 	"sync"
@@ -133,16 +132,7 @@ func (e *Engine) RenderFrame(frameNum int, events []model.FrameEvent, cam Camera
 	buf := e.Pool.BufferPool.Get().(*image.RGBA)
 
 	tBgStart := time.Now()
-	var bg image.Image
-	switch style {
-	case "blackboard":
-		bg = image.NewUniform(color.RGBA{15, 15, 15, 255})
-	case "glassboard":
-		bg = image.NewUniform(color.RGBA{24, 28, 37, 255})
-	default:
-		bg = image.NewUniform(image.White)
-	}
-	draw.Draw(buf, buf.Bounds(), bg, image.Point{}, draw.Src)
+	draw.Draw(buf, buf.Bounds(), ResolveStyleBg(style), image.Point{}, draw.Src)
 	tClearBg := time.Since(tBgStart)
 
 	var activeHandX, activeHandY int
@@ -327,81 +317,36 @@ func (e *Engine) RenderFrame(frameNum int, events []model.FrameEvent, cam Camera
 			renderY = ev.Y
 		}
 
-		var progress float64
-		if ev.EndFrame <= ev.StartFrame {
-			progress = 1.0
-		} else {
-			progress = float64(frameNum-ev.StartFrame) / float64(ev.EndFrame-ev.StartFrame)
-			if progress > 1.0 {
-				progress = 1.0
-			}
-		}
-		easedProgress := progress * progress * (3 - 2*progress)
+		easedProgress := EaseInOut(CalcProgress(frameNum, ev.StartFrame, ev.EndFrame))
 
 		destRect := image.Rect(renderX, renderY, renderX+img.Bounds().Dx(), renderY+img.Bounds().Dy())
 
 		if ev.EventType == "static" {
 			tDrawStart := time.Now()
-			if visibility >= 1.0 {
-				draw.Draw(buf, destRect, img, image.Point{}, draw.Over)
-			} else {
-				maskUniform := image.NewUniform(color.Alpha{A: uint8(visibility * 255)})
-				draw.DrawMask(buf, destRect, img, image.Point{}, maskUniform, image.Point{}, draw.Over)
-			}
+			DrawWithMask(buf, destRect, img, visibility)
 			localDrawMaskTime += time.Since(tDrawStart)
 			continue
 		}
 
 		if ev.EventType == "move" {
-			rawT := float64(frameNum-ev.StartFrame) / float64(ev.EndFrame-ev.StartFrame)
-			if rawT > 1.0 {
-				rawT = 1.0
-			}
-			easedT := rawT * rawT * (3 - 2*rawT)
+			easedT := EaseInOut(CalcProgress(frameNum, ev.StartFrame, ev.EndFrame))
 			curX := ev.X + int(float64(ev.DestX-ev.X)*easedT)
 			curY := ev.Y + int(float64(ev.DestY-ev.Y)*easedT)
 			destRect = image.Rect(curX, curY, curX+renderW, curY+renderH)
 			tDrawStart := time.Now()
-			if visibility >= 1.0 {
-				draw.Draw(buf, destRect, img, image.Point{}, draw.Over)
-			} else {
-				maskUniform := image.NewUniform(color.Alpha{A: uint8(visibility * 255)})
-				draw.DrawMask(buf, destRect, img, image.Point{}, maskUniform, image.Point{}, draw.Over)
-			}
+			DrawWithMask(buf, destRect, img, visibility)
 			localDrawMaskTime += time.Since(tDrawStart)
 
 			dx := ev.DestX - ev.X
 			dy := ev.DestY - ev.Y
-			handOffX, handOffY := 0, 0
-			if dx > 0 {
-				handOffX = renderW / 3
-			} else if dx < 0 {
-				handOffX = -renderW / 3
-			}
-			if dy > 0 {
-				handOffY = renderH / 3
-			} else if dy < 0 {
-				handOffY = -renderH / 3
-			}
+			handOffX, handOffY := HandOffset(dx, dy, renderW, renderH)
 			activeHandX = curX + renderW/2 + handOffX
 			activeHandY = curY + renderH/2 + handOffY
 			if dx != 0 || dy != 0 {
-				angRad := math.Atan2(float64(dy), float64(dx))
-				ang := int(angRad * 180 / math.Pi)
-				if ang > 25 {
-					ang = 25
-				}
-				if ang < -25 {
-					ang = -25
-				}
-				activeHandAngle = ang
+				activeHandAngle = ComputeHandAngle(dx, dy)
 			}
 			handVisible = true
-			if ev.HandStyle != "" {
-				activeHandStyle = ev.HandStyle
-			} else {
-				activeHandStyle = "default"
-			}
+			activeHandStyle = ResolveStr(ev.HandStyle, "default")
 			continue
 		}
 
@@ -414,20 +359,7 @@ func (e *Engine) RenderFrame(frameNum int, events []model.FrameEvent, cam Camera
 			localMaskGenTime += time.Since(tMaskStart)
 
 			tDrawStart := time.Now()
-			for i := range mask.Pix {
-				mask.Pix[i] = 255 - mask.Pix[i]
-			}
-			if easedProgress >= 0.9 {
-				factor := (1.0 - easedProgress) / 0.1
-				for i := range mask.Pix {
-					mask.Pix[i] = uint8(float64(mask.Pix[i]) * factor)
-				}
-			}
-			if visibility < 1.0 {
-				for i := range mask.Pix {
-					mask.Pix[i] = uint8(float64(mask.Pix[i]) * visibility)
-				}
-			}
+			ApplyEasedProgressMask(mask, easedProgress, visibility)
 			draw.DrawMask(buf, destRect, img, image.Point{}, mask, image.Point{}, draw.Over)
 			localDrawMaskTime += time.Since(tDrawStart)
 
@@ -439,22 +371,13 @@ func (e *Engine) RenderFrame(frameNum int, events []model.FrameEvent, cam Camera
 			activeHandY = renderY + fy
 			activeHandAngle = 0
 			handVisible = true
-			if ev.HandStyle != "" {
-				activeHandStyle = ev.HandStyle
-			} else {
-				activeHandStyle = "eraser"
-			}
+			activeHandStyle = ResolveStr(ev.HandStyle, "eraser")
 			continue
 		}
 
 		if easedProgress >= 1.0 {
 			tDrawStart := time.Now()
-			if visibility >= 1.0 {
-				draw.Draw(buf, destRect, img, image.Point{}, draw.Over)
-			} else {
-				maskUniform := image.NewUniform(color.Alpha{A: uint8(visibility * 255)})
-				draw.DrawMask(buf, destRect, img, image.Point{}, maskUniform, image.Point{}, draw.Over)
-			}
+			DrawWithMask(buf, destRect, img, visibility)
 			localDrawMaskTime += time.Since(tDrawStart)
 		} else {
 			tMaskStart := time.Now()
@@ -483,13 +406,11 @@ func (e *Engine) RenderFrame(frameNum int, events []model.FrameEvent, cam Camera
 
 			activeHandX = renderX + fx
 			activeHandY = renderY + fy
-			switch ev.MaskStyle {
-			case "diagonal":
+			activeHandAngle = 0
+			if ev.MaskStyle == "diagonal" {
 				activeHandAngle = 15
-			case "ltr":
+			} else if ev.MaskStyle == "ltr" {
 				activeHandAngle = -10
-			default:
-				activeHandAngle = 0
 			}
 			handVisible = true
 			if ev.HandStyle != "" {
@@ -593,10 +514,7 @@ func handleSlideEvent(e *Engine, frameNum int, ev model.FrameEvent, buf *image.R
 		}
 	}
 
-	progress := float64(frameNum-ev.StartFrame) / float64(ev.EndFrame-ev.StartFrame)
-	if progress > 1.0 {
-		progress = 1.0
-	}
+	progress := CalcProgress(frameNum, ev.StartFrame, ev.EndFrame)
 
 	locX := renderX
 	locY := renderY
@@ -604,10 +522,7 @@ func handleSlideEvent(e *Engine, frameNum int, ev model.FrameEvent, buf *image.R
 	drawH := renderH
 	alpha := visibility
 
-	transition := ev.Transition
-	if transition == "" {
-		transition = "none"
-	}
+	transition := ResolveStr(ev.Transition, "none")
 
 	animWindow := animFrames
 	if animWindow <= 0 {
@@ -619,7 +534,7 @@ func handleSlideEvent(e *Engine, frameNum int, ev model.FrameEvent, buf *image.R
 		if frameProgress > 1.0 {
 			frameProgress = 1.0
 		}
-		easedFrameProgress := frameProgress * frameProgress * (3 - 2*frameProgress)
+		easedFrameProgress := EaseInOut(frameProgress)
 
 		switch transition {
 		case "fade":
@@ -694,17 +609,12 @@ func handleLower3rdEvent(e *Engine, frameNum int, ev model.FrameEvent, buf *imag
 
 	if frameInEvent <= totalAnimFrames && durationFrames > 0 {
 		if frameInEvent < slideEntryAnimFrames {
-			// Entry: slide up from below
-			p := float64(frameInEvent) / float64(slideEntryAnimFrames)
-			ep := easeOutCubic(p)
+			ep := EaseOutCubic(float64(frameInEvent) / float64(slideEntryAnimFrames))
 			sourceY := e.Height - lower3rdH - int(float64(e.Height)*0.04)
 			localY = int(float64(targetY-sourceY)*(1.0-ep)) + sourceY
 			alpha = ep
 		} else if frameInEvent > durationFrames-slideExitAnimFrames {
-			// Exit: slide down
-			exitFrame := frameInEvent - (durationFrames - slideExitAnimFrames)
-			p := float64(exitFrame) / float64(slideExitAnimFrames)
-			ep := easeInOutCubic(p)
+			ep := EaseInOutCubic(float64(frameInEvent-(durationFrames-slideExitAnimFrames)) / float64(slideExitAnimFrames))
 			sourceY := e.Height + 20
 			localY = targetY + int(float64(sourceY-targetY)*ep)
 			alpha = 1.0 - ep
@@ -738,12 +648,7 @@ func handleLower3rdEvent(e *Engine, frameNum int, ev model.FrameEvent, buf *imag
 	cropped := image.NewRGBA(srcRect)
 	copy(cropped.Pix, panelRGBA.Pix[0:len(cropped.Pix)])
 
-	if alpha >= 1.0 {
-		draw.Draw(buf, destRect, cropped, image.Point{}, draw.Over)
-	} else {
-		maskUniform := image.NewUniform(color.Alpha{A: uint8(alpha * 255)})
-		draw.DrawMask(buf, destRect, cropped, image.Point{}, maskUniform, image.Point{}, draw.Over)
-	}
+	DrawWithMask(buf, destRect, cropped, alpha)
 }
 
 func scaleImageProgress(src image.Image, w, h int, progress float64) image.Image {
