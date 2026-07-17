@@ -1,240 +1,105 @@
-# zen-board — Project Architecture Overview
+# zen-board — Go
 
 ## Purpose
+Video generation engine that compiles `.zen` script files into MP4 videos. Parses a declarative whiteboard-style DSL, orchestrates TTS audio, renders each frame via Go's `image` library with hand-animation, annotations, transitions, camera moves, and lower-thirds, then pipes frames through FFmpeg. Stack: Go 1.25, FFmpeg (external), oksvg for SVG rasterization.
 
-zen-board is a Go-based whiteboard video renderer. It takes a script file describing slides,
-drawing actions, transitions, and narration, then produces an MP4 video with animated hand-drawn
-content, text-to-speech audio, and ASS-format subtitles. It supports both a CLI pipeline and an
-interactive web GUI with live preview.
+## Architecture
+```
+.zen script  →  Parser  →  Timeline Compiler  →  Render Engine  →  FFmpeg pipe  →  MP4
+                           ↑                        ↓
+                        TTS Orchestrator        Frame Pool (goroutines)
+```
 
----
-
-## Directory Tree
-
+## File Tree
 ```
 zen-board/
-|
-+-- main.go                          # Entry point — dispatches Run()
-|
-+-- internal/
-    |
-    +-- assets/                      # Asset-management subsystem
-    |   +-- bg.go                    #   Background removal (rembg, chroma-key, zen-lights)
-    |   +-- cli.go                   #   CLI subcommand dispatch for assets
-    |   +-- gen.go                   #   Paint asset generation via zen-lights API
-    |   +-- indexer.go               #   Asset index (scan, load, save)
-    |   +-- server.go                #   Web GUI server (HTTP, WebSocket, live preview)
-    |
-    +-- builder/                     # Timeline compilation and render dispatch
-    |   +-- renderer.go              #   RenderTimeline — drives per-frame rendering
-    |   +-- timeline.go              #   CompileTimeline, PrepareAssets, PaintGenRequest
-    |
-    +-- ffmpeg/                      # FFmpeg integration (video/audio encoding)
-    |   +-- pipe.go                  #   Pipe (stdin/stdout FFmpeg process), NewPreviewPipe
-    |
-    +-- model/                       # Core domain types
-    |   +-- types.go                 #   Project, ScriptLine, DrawAction, WordTiming, FrameEvent, Timeline, ...
-    |
-    +-- render/                      # Frame rendering engine
-    |   +-- annotate.go              #   Arrow, highlight, compare, overlay, transition, counter events
-    |   +-- camera.go                #   Camera state, viewport presets, CropAndScale
-    |   +-- engine.go                #   Engine (main render orchestrator), RenderFrame, slide/lower3rd handlers
-    |   +-- hand.go                  #   HandRenderer — animated hand sprite with rotation + breathing
-    |   +-- lower3rd.go              #   Lower-third panel rendering
-    |   +-- mask.go                  #   Alpha mask generation (reveal/sweep styles)
-    |   +-- pool.go                  #   RenderPool — concurrent frame job worker pool
-    |   +-- text.go                  #   Embedded font loading and text rendering
-    |
-    +-- script/                      # Script parsing
-    |   +-- parser.go                #   Parse, extractActions
-    |   +-- preprocessor.go          #   SplitInlineWaits
-    |
-    +-- subtitle/                    # Subtitle generation
-    |   +-- ass.go                   #   GenerateASS — produces ASS subtitle format
-    |
-    +-- tts/                         # Text-to-speech synthesis
-    |   +-- client.go                #   TTSClient, SynthesizeWithTimings, ConcatenateWAVs
-    |   +-- orchestrator.go          #   OrchestrateTTS — parallel TTS + word-timing assembly
-    |   +-- timing.go                #   EstimateWordTimings (syllable-based fallback)
-    |   +-- wav.go                   #   WAV parsing, header generation, silent WAV creation
-    |
-    +-- testutil/                    # Test helpers
-        +-- mock_tts.go              #   NewMockTTSServer (minimal WAV mock server)
+├── main.go                    ← Entry point: CLI dispatch, orchestration loop
+├── config.json                ← Project configuration (resolution, FPS, paths)
+├── go.mod                     ← Module: zen-board, Go 1.25
+├── examples/                  ← Sample .zen scripts
+├── internal/
+│   ├── assets/                ← Asset server, indexing, background removal, CLI, gen
+│   ├── builder/               ← Timeline compilation + frame rendering loop
+│   ├── ffmpeg/                ← FFmpeg subprocess pipe (raw frames → video)
+│   ├── model/                 ← Core types: Project, FrameEvent, Timeline, Layout
+│   ├── render/                ← Frame rendering: engine, hand, annotations, camera, text, masks
+│   ├── script/                ← .zen DSL parser + preprocessor
+│   ├── subtitle/              ← ASS subtitle generation
+│   ├── svg/                   ← SVG rasterization + editing (oksvg)
+│   └── tts/                   ← TTS synthesis client + orchestrator + timing
+└── assets/                    ← Static assets (images, SVGs, prompts)
 ```
 
----
+## Component Roles
 
-## Data Flow
+| File / Module | Role | Key Exports |
+|---|---|---|
+| `main.go` | Entry point: loads config, parses `.zen`, runs render or CLI | `main`, `Run`, `loadConfig` |
+| `internal/script/parser.go` | Parses `.zen` DSL into structured actions | `Parse`, `extractActions` |
+| `internal/script/preprocessor.go` | Inline wait-splitting before timeline compilation | `SplitInlineWaits` |
+| `internal/model/types.go` | Core data types for project, events, timeline | `Project`, `ScriptLine`, `FrameEvent`, `Timeline`, `ProcessedLine`, `WordTiming`, `DrawAction`, `SubtitleEvent` |
+| `internal/model/layout.go` | Preset layout regions for drawing/annotation | `GetPresetLayout` |
+| `internal/builder/timeline.go` | Compiles parsed script into frame-granular timeline, generates paint assets | `CompileTimeline`, `PrepareAssets`, `GeneratePaintAsset`, `TimelineCompilation` |
+| `internal/builder/renderer.go` | Renders all frames sequentially from compiled timeline | `RenderTimeline` |
+| `internal/render/engine.go` | Core rendering engine: frame-by-frame image compositing | `Engine`, `NewEngine`, `RenderFrame`, `LoadAsset`, `RegisterAsset`, `StartWorkers`, `RenderStats` |
+| `internal/render/annotate.go` | Drawing annotations: arrows, highlights, comparisons, overlays, counters | `handleArrowEvent`, `handleHighlightEvent`, `handleCompareEvent`, `handleOverlayEvent`, `handleTransitionEvent`, `handleCounterEvent` |
+| `internal/render/hand.go` | Animated hand sprite rendering with rotation and breath jitter | `HandRenderer`, `NewHandRenderer`, `Draw` |
+| `internal/render/camera.go` | Camera pan/zoom via crop-and-scale | `CameraState`, `LerpCamera`, `CropAndScale`, `GetPresetViewport` |
+| `internal/render/text.go` | Embedded font text rendering | `RenderText`, `pickEmbeddedFont` |
+| `internal/render/easing.go` | Easing functions for smooth progress interpolation | `CalcProgress`, `EaseInOut`, `EaseOutCubic`, `EaseInOutCubic` |
+| `internal/render/mask.go` | Alpha mask generation for reveal/wipe effects | `GenerateMask`, `GetFrontierPoint`, `MaskConfig` |
+| `internal/render/pool.go` | Goroutine worker pool for parallel frame rendering | `RenderPool`, `NewRenderPool`, `FrameJob`, `RenderResult` |
+| `internal/render/lower3rd.go` | Lower-third overlay rendering | `RenderLower3rdPanel` |
+| `internal/render/draw_utils.go` | Masked image compositing helper | `DrawWithMask` |
+| `internal/render/bg_utils.go` | Background style resolution | `ResolveStyleBg`, `ResolveStyleTextColor`, `ResolveStyleBgColor` |
+| `internal/render/mask_utils.go` | Progress-based alpha mask application | `ApplyAlpha`, `ApplyEasedProgressMask` |
+| `internal/ffmpeg/pipe.go` | FFmpeg subprocess pipe: feeds raw frames, manages audio | `Pipe`, `NewPipe`, `NewPreviewPipe`, `WriteFrame`, `Close`, `buildAudioArgs` |
+| `internal/tts/client.go` | TTS HTTP client with caching and WAV concatenation | `TTSClient`, `NewClient`, `Synthesize`, `SynthesizeWithTimings`, `ConcatenateWAVs` |
+| `internal/tts/orchestrator.go` | Multi-line TTS orchestration, word-timing compilation | `OrchestrateTTS`, `SynthJob`, `SynthResult` |
+| `internal/tts/timing.go` | Syllable-count-based word-timing estimation | `EstimateWordTimings`, `countSyllables` |
+| `internal/tts/wav.go` | WAV parsing, header creation, silent WAV generation | `GetWAVDuration`, `ParseWAVParams`, `CreateWAVHeader`, `CreateSilentWAV` |
+| `internal/subtitle/ass.go` | ASS subtitle file generation from word timings | `GenerateASS` |
+| `internal/svg/render.go` | SVG-to-image rasterization via oksvg | `RasterizeSVG`, `RasterConfig` |
+| `internal/svg/edit.go` | SVG color modification and preprocessing | `ModifySVG`, `PreprocessSVG`, `Variant` |
+| `internal/assets/server.go` | Web GUI server for asset management | `StartServer` |
+| `internal/assets/cli.go` | CLI subcommand handler for asset operations | `RunCLI` |
+| `internal/assets/indexer.go` | Asset index loading, saving, auto-indexing | `AssetIndex`, `LoadIndex`, `SaveIndex`, `AutoIndex`, `AssetEntry` |
+| `internal/assets/gen.go` | AI-prompt-based paint asset generation (zen-lights) | `BatchGenerate`, `GenerateSingleAsset`, `PaintGenRequest`, `PaintGenResponse` |
+| `internal/assets/bg.go` | Background removal: rembg, chroma-key, brightness-based | `ProcessBackgrounds`, `removeBgRembg`, `removeBgChromaKey` |
 
-```
-Script (.txt)  --[parser]-->  ProcessedLine[]  --[preprocessor]-->  Expanded lines
-       |
-       v
-  CompileTimeline  --[model.Timeline]-->  FrameEvent[]
-       |
-       v
-  RenderPool  --[parallel jobs]-->  Engine.RenderFrame
-       |                                  |
-  TTSClient <--(word timings)----   Draw hand / slides / lower3rds
-       |                            /  arrows / highlights / masks
-  OrchestrateTTS ------------>  Concatenated WAV
-       |
-       v
-  FFmpeg Pipe  <--(raw RGBA frames + WAV)-->  MP4
-       |
-  ASS Subtitle  --[embedded]-->  Subtitled output
-```
+## Key Architectural Patterns
 
----
+1. **Pipeline decomposition**: `.zen` → Parser → Timeline Compiler → Render Engine → FFmpeg pipe. Each stage produces a well-defined intermediate representation (actions → timeline → frames → video), enabling parallel development and testing of each stage independently.
 
-## Entry point: main.go
+2. **Frame-granular timeline**: `CompileTimeline` produces a flat array of `FrameEvent` structs indexed by frame number. The render engine iterates linearly, compositing events active at each frame. This avoids a scene graph while keeping per-frame composition O(active events).
 
-| Export | Role |
-|--------|------|
-| `main()` | Parses flags, dispatches to `Run()` |
-| `Run()` | Two modes: (1) **daemon** — starts `StartServer()` with Web GUI; (2) **CLI** — `RunCLI()` for asset subcommands or script rendering pipeline |
+3. **Goroutine worker pool**: `RenderPool` dispatches `FrameJob` structs across N workers. Jobs are independent per frame (no inter-frame dependencies), making the workload embarrassingly parallel with near-linear speedup on multi-core CPUs.
 
-Calls into: `internal/assets/cli.go`, `internal/assets/server.go`, `internal/builder/renderer.go`,
-`internal/ffmpeg/pipe.go`, `internal/model/types.go`, `internal/script/parser.go`,
-`internal/subtitle/ass.go`, `internal/tts/client.go`, `internal/tts/orchestrator.go`
+4. **TTS caching layer**: `SynthesizeWithTimings` wraps the raw synthesis call with a file-based cache keyed by text hash. Cache hits skip TTS API calls entirely, critical for iteration during development.
 
----
+5. **Background removal strategies**: Three implementations (`removeBgRembg` external process, `removeBgLights` brightness-based, `removeBgChromaKey` near-white alpha) are selected by config, allowing trade-offs between quality and speed without changing the processing pipeline.
 
-## Component Breakdown
+6. **Camera as post-process crop**: Instead of transforming render coordinates, `CropAndScale` pans/zooms by cropping from a higher-resolution render buffer and scaling down. This avoids re-rendering and simplifies coordinate math.
 
-### internal/model/ — Core Types
+7. **SVG editing via XML manipulation**: `ModifySVG` uses the `etree` XML library to traverse SVG DOM and replace fill colors / add CSS classes, rather than re-rendering. `PreprocessSVG` normalizes `rgba()` to `rgb()` for oksvg compatibility.
 
-| Type | Fields / Role |
-|------|---------------|
-| `Project` | Config: Dimensions (1920x1080), FPS (30), TTS URL, ColorMode, DefaultBgColor, VTTFonts, hand asset config |
-| `ScriptLine` | Raw script line: text, delay, image file ref |
-| `DrawAction` | Type (draw/highlight/arrow/erase...), points, color, size, duration |
-| `WordTiming` | Word string, start/end time in seconds |
-| `FrameEvent` | Union-like struct: holds slide background, draw actions, word timings, camera state, overlay/transition/counter config |
-| `SubtitleEvent` | Text slice with start/end time |
-| `Timeline` | Compiled timeline: events, subtitle events, total duration, WAV data |
-| `ProcessedLine` | Parsed script line with resolved actions and timing |
+## Dependencies
 
-Connects to: all other packages via these types.
+### Direct
+| Package | Role |
+|---|---|
+| `golang.org/x/image` | Extended image processing (fonts, draw, freetype) |
 
-### internal/assets/ — Asset Management
+### Indirect (transitive)
+| Package | Role |
+|---|---|
+| `github.com/srwiley/oksvg` + `rasterx` | SVG rasterization to `image.Image` |
+| `github.com/beevik/etree` | XML DOM manipulation for SVG editing |
+| `golang.org/x/net` + `text` | HTTP, charset, text encoding |
 
-| File | Key Export | Role |
-|------|------------|------|
-| `server.go` | `StartServer(port, readyChan)` | HTTP/WebSocket server; serves Web GUI, accepts asset uploads, broadcasts render progress |
-| `cli.go` | `RunCLI(args)` | Processes `assets` subcommands: index, generate, background-remove |
-| `gen.go` | `BatchGenerate()`, `GenerateSingleAsset()` | Calls zen-lights API to generate PNG paint assets from text prompts; updates index |
-| `indexer.go` | `LoadIndex()`, `SaveIndex()`, `AutoIndex()` | Manages `assetsindex.json`: scans directory, caches dimensions + background flag |
-| `bg.go` | `ProcessBackgrounds()` | Background removal pipeline with three strategies (rembg, zen-lights, chroma-key) |
-
-### internal/builder/ — Timeline Builder
-
-| Export | Role |
-|--------|------|
-| `CompileTimeline(project, lines, ttsClient, ctx)` | ~965 lines. Builds full `Timeline` from parsed script: allocates FrameEvents, resolves background/foreground layers, inserts draw actions, handles slide changes, lower3rds, overlays, transitions, counters, word-timing alignment, camera animation, paint asset generation |
-| `PrepareAssets()` | Pre-loads and caches image assets |
-| `RenderTimeline(project, timeline, outputPath)` | Drives per-frame rendering: initializes `Engine`, creates FFmpeg `Pipe`, submits `FrameJob`s to `RenderPool`, writes RGBA frames, encodes WAV → MP4 |
-| `TextRenderJob`, `GenRenderJob`, `StyleKeyframe`, `ChapterMarker` | Interim compilation types |
-
-### internal/render/ — Rendering Engine
-
-| File | Key Export | Role |
-|------|------------|------|
-| `engine.go` | `Engine`, `NewEngine()`, `RenderFrame()` | Central render orchestrator. Manages asset cache, composits layers: background → slides → hands → draw actions → lower3rds → camera crop |
-| `hand.go` | `HandRenderer`, `Draw()` | Animated hand sprite renderer. Pre-computes rotated sprites at 5° increments (±30°). Applies breathing jitter per frame |
-| `annotate.go` | `handleArrowEvent`, `handleHighlightEvent`, `handleCompareEvent`, `handleOverlayEvent`, `handleTransitionEvent`, `handleCounterEvent` | Drawing annotation primitives: bezier arrows with arrowheads, rounded-rect highlights, side-by-side comparison with labels, image overlays, wipe transitions, counter overlays with comma formatting |
-| `camera.go` | `GetPresetViewport()`, `LerpCamera()`, `CropAndScale()` | Camera animation: preset viewports, smooth interpolation, output frame cropping |
-| `mask.go` | `GenerateMask()`, `GetFrontierPoint()` | Alpha mask generation for reveal/sweep progress animations; frontier tracking for pencil-tip effects |
-| `lower3rd.go` | `RenderLower3rdPanel()` | Lower-third title/subtitle panel with rounded rect, easing animations |
-| `text.go` | `RenderText()` | Text rendering with embedded font selection |
-| `pool.go` | `RenderPool`, `FrameJob`, `RenderResult`, `NewRenderPool()` | Concurrent frame rendering worker pool |
-
-### internal/ffmpeg/ — FFmpeg Pipe
-
-| Export | Role |
-|--------|------|
-| `Pipe` struct | Wraps stdin of a spawned FFmpeg process |
-| `NewPipe(width, height, fps, audioPath, outputPath)` | Spawns FFmpeg with video + audio encoding args; returns pipe for raw RGBA frames |
-| `WriteFrame(data)` | Writes raw RGBA pixel data to pipe stdin |
-| `Close()` | Closes pipe and waits for FFmpeg to finalize |
-| `NewPreviewPipe(...)` | Spawns a lower-latency FFmpeg for WebSocket preview streaming |
-
-### internal/script/ — Script Parser
-
-| Export | Role |
-|--------|------|
-| `Parse(text)` | Parses multi-line script into `[]ProcessedLine`. Handles `@asset`, `@wait`, `@delay`, `@image`, `@lower3rd`, `@counter` directives |
-| `extractActions(lines)` | Extracts `DrawAction` per line from inline drawing directives |
-| `SplitInlineWaits(lines)` | Pre-processor: splits lines at inline `{wait=N}` markers so timeline builder treats waits as separate audio segments |
-
-### internal/tts/ — Text-to-Speech
-
-| Export | Role |
-|--------|------|
-| `TTSClient`, `NewClient(url)` | HTTP client to TTS server (piper/OpenAI-compatible API) |
-| `SynthesizeWithTimings(text, voice)` | Cached synthesis: returns `TTSResult` with audio + word timings |
-| `OrchestrateTTS(lines, client)` | Runs synthesis for all script lines in parallel, concatenates WAVs, computes absolute word timings |
-| `EstimateWordTimings(text)` | Syllable-based timing estimation fallback when server returns no word-level timestamps |
-| `GetWAVDuration(data)`, `ConcatenateWAVs(fragments)` | WAV utility: duration extraction, multi-segment concatenation |
-| `CreateSilentWAV(durationMs)` | Generates silent WAV for wait/delay periods |
-
-### internal/subtitle/ — Subtitle Generation
-
-| Export | Role |
-|--------|------|
-| `GenerateASS(events, width, height, color)` | Produces ASS subtitle track from `[]SubtitleEvent` for embedding in output MP4 |
-
----
-
-## Architectural Patterns
-
-### 1. Pipeline Pattern
-
-The entire render path is a sequential pipeline:
-```
-Script → Parse → CompileTimeline → RenderPool.RenderFrame → Pipe.WriteFrame → FFmpeg
-```
-Each stage consumes the previous stage's output via well-defined types (`ProcessedLine`, `Timeline`, `FrameEvent`, raw RGBA).
-
-### 2. Worker Pool (Concurrent Frame Rendering)
-
-`RenderPool` in `internal/render/pool.go` dispatches frame rendering across goroutines. Each job is a
-struct-bound closure that calls `Engine.RenderFrame()`. Results (RGBA byte slices) are collected
-in order and fed to the FFmpeg pipe sequentially.
-
-### 3. Event-Based Frame Composition
-
-`Engine.RenderFrame(frameNumber, events, ...)` evaluates a `[]FrameEvent` slice active at the given
-frame, composites layers in order:
-1. Background (solid color or image)
-2. Slide background image with pan/zoom camera
-3. Hand sprite (animated, rotated, breathing)
-4. Drawing annotations (arrows, highlights, comparisons)
-5. Lower-third panels
-6. Overlays and transitions (wipe, counter)
-
-### 4. Asset Index + Cache
-
-`internal/assets/indexer.go` maintains `assetsindex.json` as a metadata cache (dimensions,
-background-presence flag). `Engine.LoadAsset()` caches decoded images in a map, lazy-loaded at
-render time.
-
-### 5. TTS Orchestration with Fallback
-
-`OrchestrateTTS` parallelizes synthesis calls per script line. If the TTS server returns audio
-without word-level timings, `EstimateWordTimings` provides syllable-count-based estimates.
-Caching via file-based TTS result cache (`SynthesizeWithTimings`) avoids re-synthesis.
-
-### 6. Dual-Mode Entry (CLI + Server)
-
-`Run()` in `main.go` branches on CLI flags:
-- `--daemon` or no subcommand → `StartServer()` (Web GUI + WebSocket preview)
-- `assets <subcommand>` → `RunCLI()` (index, generate, background-remove)
-- `render` or direct script path → full pipeline (parse → compile → render → encode)
-
-### 7. Background Removal Strategies
-
-`ProcessBackgrounds` in `internal/assets/bg.go` uses three strategies with fallback:
-- **rembg** — external Python service (highest quality, slowest)
-- **zen-lights** — local generative model (balance of speed/quality)
-- **chroma-key** — simple near-white pixel detection with alpha blending (fastest)
+### External runtime
+| Dependency | Role |
+|---|---|
+| FFmpeg | Raw frame → H.264/ACC video muxing |
+| Python + rembg (optional) | AI background removal |
+| zen-lights (optional) | AI paint asset generation |
