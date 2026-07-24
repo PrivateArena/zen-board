@@ -49,8 +49,8 @@ func BenchmarkRenderFrameStatic(b *testing.B) {
 	}
 	cam := GetPresetViewport("reset", 1920, 1080)
 
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	
+	for b.Loop() {
 		rgba := engine.RenderFrame(50, events, cam, "whiteboard")
 		engine.Pool.BufferPool.Put(rgba)
 	}
@@ -73,8 +73,8 @@ func BenchmarkRenderFrameDraw(b *testing.B) {
 	}
 	cam := GetPresetViewport("reset", 1920, 1080)
 
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	
+	for b.Loop() {
 		rgba := engine.RenderFrame(50, events, cam, "whiteboard")
 		engine.Pool.BufferPool.Put(rgba)
 	}
@@ -97,8 +97,8 @@ func BenchmarkRenderFrameErase(b *testing.B) {
 	}
 	cam := GetPresetViewport("reset", 1920, 1080)
 
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	
+	for b.Loop() {
 		rgba := engine.RenderFrame(50, events, cam, "whiteboard")
 		engine.Pool.BufferPool.Put(rgba)
 	}
@@ -122,8 +122,8 @@ func BenchmarkRenderFrameMove(b *testing.B) {
 	}
 	cam := GetPresetViewport("reset", 1920, 1080)
 
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	
+	for b.Loop() {
 		rgba := engine.RenderFrame(50, events, cam, "whiteboard")
 		engine.Pool.BufferPool.Put(rgba)
 	}
@@ -133,8 +133,8 @@ func BenchmarkCropAndScaleBilinear(b *testing.B) {
 	src := image.NewRGBA(image.Rect(0, 0, 1920, 1080))
 	cam := CameraState{X: 100, Y: 100, W: 960, H: 540} // Zoom state
 
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	
+	for b.Loop() {
 		dst := CropAndScale(src, cam, 1920, 1080, false)
 		_ = dst
 	}
@@ -144,8 +144,8 @@ func BenchmarkCropAndScaleNearestNeighbor(b *testing.B) {
 	src := image.NewRGBA(image.Rect(0, 0, 1920, 1080))
 	cam := CameraState{X: 100, Y: 100, W: 960, H: 540} // Zoom state
 
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	
+	for b.Loop() {
 		dst := CropAndScale(src, cam, 1920, 1080, true)
 		_ = dst
 	}
@@ -153,8 +153,8 @@ func BenchmarkCropAndScaleNearestNeighbor(b *testing.B) {
 
 func BenchmarkGenerateMask(b *testing.B) {
 	cfg := DefaultMaskConfig()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	
+	for b.Loop() {
 		mask := GenerateMask(800, 600, 0.5, "diagonal", cfg)
 		_ = mask
 	}
