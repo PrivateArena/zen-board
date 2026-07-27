@@ -91,6 +91,8 @@ func Run() error {
 	freezeFrames := fs.Int("freeze", conf.FreezeFrames, "Number of freeze frames at the end of the video")
 	fast := fs.Bool("fast", false, "Enable fast preview rendering mode (uses nearest-neighbor camera scale, ultrafast H.264 preset)")
 	ttsCacheDir := fs.String("tts-cache", conf.TTSCacheDir, "Directory to cache TTS audio/timings")
+	eventLog := fs.Bool("event-log", false, "Enable per-event render timing logging for debugging")
+	eventLogPath := fs.String("event-log-export", "", "Path to export full per-frame event log as JSON")
 	
 	if err := fs.Parse(os.Args[1:]); err != nil {
 		return err
@@ -214,6 +216,10 @@ func Run() error {
 		return fmt.Errorf("engine: %w", err)
 	}
 	engine.FastMode = *fast || *preview
+	if *eventLog {
+		engine.EventLog.Enabled = true
+		log.Printf("[RenderLog] Enabled per-frame event timing capture")
+	}
 
 	err = builder.PrepareAssets(conf, engine, comp.Timeline, comp.TextJobs, comp.GenJobs)
 	if err != nil {
@@ -236,6 +242,18 @@ func Run() error {
 	if err != nil {
 		return err
 	}
+
+	if *eventLog {
+		engine.PrintEventReport()
+		if *eventLogPath != "" {
+			if expErr := engine.ExportEventLogJSON(*eventLogPath); expErr != nil {
+				log.Printf("[RenderLog] Failed to export JSON: %v", expErr)
+			} else {
+				log.Printf("[RenderLog] Exported per-frame log to: %s (+ %s.summary.jsonl)", *eventLogPath, *eventLogPath)
+			}
+		}
+	}
+
 	fmt.Printf("Total TTS & Timing synthesis: %v\n", ttsDuration)
 	return nil
 }

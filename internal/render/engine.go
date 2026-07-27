@@ -1,11 +1,13 @@
 package render
 
 import (
+	"encoding/json"
 	"fmt"
 	"image"
 	"image/color"
 	"image/draw"
 	"os"
+	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -32,6 +34,125 @@ type RenderStats struct {
 	TotalRenderTime int64
 }
 
+type EngineEventLog struct {
+	mu       sync.Mutex
+	Entries  []EventLogEntry
+	Enabled  bool
+}
+
+type EventLogEntry struct {
+	Frame      int     `json:"frame"`
+	EventID    string  `json:"event_id"`
+	TsMs       float64 `json:"ts_ms,omitempty"`
+	InvertNs   int64   `json:"invert_ns,omitempty"`
+	ScaleNs    int64   `json:"scale_ns,omitempty"`
+	MaskNs     int64   `json:"mask_ns,omitempty"`
+	FrontierNs int64   `json:"frontier_ns,omitempty"`
+	DrawNs     int64   `json:"draw_ns,omitempty"`
+	HandNs     int64   `json:"hand_ns,omitempty"`
+	TotalNs    int64   `json:"total_ns"`
+	Progress   float64 `json:"progress,omitempty"`
+	Visibility float64 `json:"visibility,omitempty"`
+}
+
+type EventSummary struct {
+	EventID    string  `json:"event_id"`
+	EventType  string  `json:"type"`
+	Target     string  `json:"target"`
+	StartFrame int     `json:"start_frame"`
+	EndFrame   int     `json:"end_frame"`
+	StartMs    float64 `json:"start_ms"`
+	EndMs      float64 `json:"end_ms"`
+	FrameCount int     `json:"frame_count"`
+	TotalNs    int64   `json:"total_ns"`
+	AvgNs      int64   `json:"avg_ns"`
+	MaxNs      int64   `json:"max_ns"`
+	MaxNsFrame int     `json:"max_ns_frame"`
+}
+
+func eventID(ev model.FrameEvent) string {
+	target := ev.TargetImage
+	if target == "" {
+		target = "-"
+	}
+	return fmt.Sprintf("%s:%s:%d-%d", ev.EventType, target, ev.StartFrame, ev.EndFrame)
+}
+
+func parseEventID(id string) (etype, target string, start, end int) {
+	parts := strings.SplitN(id, ":", 3)
+	if len(parts) == 3 {
+		etype, target = parts[0], parts[1]
+		fmt.Sscanf(parts[2], "%d-%d", &start, &end)
+	}
+	return
+}
+
+func NewEngineEventLog(enabled bool) *EngineEventLog {
+	return &EngineEventLog{Enabled: enabled}
+}
+
+func (l *EngineEventLog) Append(entry EventLogEntry) {
+	if !l.Enabled {
+		return
+	}
+	l.mu.Lock()
+	l.Entries = append(l.Entries, entry)
+	l.mu.Unlock()
+}
+
+func buildEventSummaries(entries []EventLogEntry, fps int) []EventSummary {
+	byID := map[string]*EventSummary{}
+	order := []string{}
+	for _, en := range entries {
+		s, ok := byID[en.EventID]
+		if !ok {
+			et, target, start, end := parseEventID(en.EventID)
+			s = &EventSummary{
+				EventID:    en.EventID,
+				EventType:  et,
+				Target:     target,
+				StartFrame: start,
+				EndFrame:   end,
+				StartMs:    float64(start) / float64(fps) * 1000,
+				EndMs:      float64(end) / float64(fps) * 1000,
+			}
+			byID[en.EventID] = s
+			order = append(order, en.EventID)
+		}
+		s.FrameCount++
+		s.TotalNs += en.TotalNs
+		if en.TotalNs > s.MaxNs {
+			s.MaxNs = en.TotalNs
+			s.MaxNsFrame = en.Frame
+		}
+	}
+	sort.Strings(order)
+	out := make([]EventSummary, 0, len(order))
+	for _, id := range order {
+		s := byID[id]
+		if s.FrameCount > 0 {
+			s.AvgNs = s.TotalNs / int64(s.FrameCount)
+		}
+		out = append(out, *s)
+	}
+	return out
+}
+
+func writeJSONL[T any](path string, rows []T) error {
+	f, err := os.Create(path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	enc := json.NewEncoder(f)
+	for _, r := range rows {
+		if err := enc.Encode(r); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 type Engine struct {
 	Width, Height int
 	FPS           int
@@ -42,6 +163,7 @@ type Engine struct {
 	AssetMu       sync.RWMutex
 	Stats         RenderStats
 	FastMode      bool
+	EventLog      *EngineEventLog
 }
 
 func NewEngine(w, h, fps int, handPath string, tipX, tipY int) (*Engine, error) {
@@ -58,6 +180,7 @@ func NewEngine(w, h, fps int, handPath string, tipX, tipY int) (*Engine, error) 
 		Hand:         hr,
 		Assets:       make(map[string]image.Image),
 		ScaledAssets: make(map[string]image.Image),
+		EventLog:     NewEngineEventLog(false),
 	}, nil
 }
 
@@ -100,6 +223,75 @@ func (e *Engine) PrintStats() {
 	printStat("Draw Hand", atomic.LoadInt64(&e.Stats.DrawHandTime))
 	printStat("Crop & Scale", atomic.LoadInt64(&e.Stats.CropScaleTime))
 	printStat("Total Render", atomic.LoadInt64(&e.Stats.TotalRenderTime))
+}
+
+func (e *Engine) EventLogSize() int {
+	if e.EventLog == nil {
+		return 0
+	}
+	e.EventLog.mu.Lock()
+	defer e.EventLog.mu.Unlock()
+	return len(e.EventLog.Entries)
+}
+
+func (e *Engine) PrintEventReport() {
+	if e.EventLog == nil || !e.EventLog.Enabled || len(e.EventLog.Entries) == 0 {
+		return
+	}
+	e.EventLog.mu.Lock()
+	entries := make([]EventLogEntry, len(e.EventLog.Entries))
+	copy(entries, e.EventLog.Entries)
+	e.EventLog.mu.Unlock()
+
+	sort.Slice(entries, func(i, j int) bool {
+		if entries[i].Frame != entries[j].Frame {
+			return entries[i].Frame < entries[j].Frame
+		}
+		return entries[i].EventID < entries[j].EventID
+	})
+
+	summaries := buildEventSummaries(entries, e.FPS)
+
+	fmt.Printf("\n=== Script Event Render Map (%d events, %d samples) ===\n", len(summaries), len(entries))
+	for _, s := range summaries {
+		fmt.Printf("  %-40s frames %6d-%6d (%7.1f-%7.1fms) | n=%-4d avg=%-10s max=%-10s @f%d\n",
+			s.EventID, s.StartFrame, s.EndFrame, s.StartMs, s.EndMs,
+			s.FrameCount, time.Duration(s.AvgNs), time.Duration(s.MaxNs), s.MaxNsFrame)
+	}
+
+	top := append([]EventSummary(nil), summaries...)
+	sort.Slice(top, func(i, j int) bool { return top[i].MaxNs > top[j].MaxNs })
+	if len(top) > 5 {
+		top = top[:5]
+	}
+	fmt.Println("  --- Slowest single-frame samples ---")
+	for _, s := range top {
+		fmt.Printf("  %-40s max=%-10s @frame %d\n", s.EventID, time.Duration(s.MaxNs), s.MaxNsFrame)
+	}
+}
+
+func (e *Engine) ExportEventLogJSON(path string) error {
+	if e.EventLog == nil {
+		return fmt.Errorf("event log is not enabled")
+	}
+	e.EventLog.mu.Lock()
+	entries := make([]EventLogEntry, len(e.EventLog.Entries))
+	copy(entries, e.EventLog.Entries)
+	e.EventLog.mu.Unlock()
+
+	sort.Slice(entries, func(i, j int) bool {
+		if entries[i].Frame != entries[j].Frame {
+			return entries[i].Frame < entries[j].Frame
+		}
+		return entries[i].EventID < entries[j].EventID
+	})
+
+	if err := writeJSONL(path, entries); err != nil {
+		return fmt.Errorf("write event log jsonl: %w", err)
+	}
+
+	summaries := buildEventSummaries(entries, e.FPS)
+	return writeJSONL(path+".summary.jsonl", summaries)
 }
 
 func (e *Engine) LoadAsset(name, path string) error {
@@ -193,60 +385,129 @@ func (e *Engine) RenderFrame(frameNum int, events []model.FrameEvent, cam Camera
 			continue
 		}
 
-		if ev.EventType == "slide" {
-			handleSlideEvent(e, frameNum, ev, buf, visibility, slideAnimFrames, cam)
-			continue
+		evProgress := 0.0
+		evInvertS := localInvertColorTime
+		evScaleS := localScaleAssetTime
+		evMaskS := localMaskGenTime
+		evFrontierS := localFrontierTime
+		evDrawS := localDrawMaskTime
+
+		var logID string
+		var tsMs float64
+		if e.EventLog != nil && e.EventLog.Enabled {
+			logID = eventID(ev)
+			tsMs = float64(frameNum) / float64(e.FPS) * 1000
 		}
 
-		if ev.EventType == "lower3rd" {
-			handleLower3rdEvent(e, frameNum, ev, buf, cam)
-			continue
-		}
-
-		if ev.EventType == "arrow" || ev.EventType == "arrow_static" {
-			handX, handY, active := handleArrowEvent(e, frameNum, ev, buf, visibility)
-			if active && ev.EventType == "arrow" {
-				activeHandX = handX
-				activeHandY = handY
-				handVisible = true
-				if style == "blackboard" || style == "glassboard" {
-					activeHandStyle = "chalk"
-				} else {
-					activeHandStyle = "marker"
-				}
+		if e.EventLog != nil && e.EventLog.Enabled {
+			appendEvLog := func(p float64) {
+				invert := int64(localInvertColorTime - evInvertS)
+				scale := int64(localScaleAssetTime - evScaleS)
+				mask := int64(localMaskGenTime - evMaskS)
+				frontier := int64(localFrontierTime - evFrontierS)
+				drawN := int64(localDrawMaskTime - evDrawS)
+				e.EventLog.Append(EventLogEntry{
+					Frame:      frameNum,
+					EventID:    logID,
+					TsMs:       tsMs,
+					InvertNs:   invert,
+					ScaleNs:    scale,
+					MaskNs:     mask,
+					FrontierNs: frontier,
+					DrawNs:     drawN,
+					TotalNs:    invert + scale + mask + frontier + drawN,
+					Progress:   p,
+					Visibility: visibility,
+				})
 			}
-			continue
-		}
-
-		if ev.EventType == "highlight" {
-			handleHighlightEvent(e, frameNum, ev, buf, visibility)
-			continue
-		}
-
-		if ev.EventType == "compare" {
-			handleCompareEvent(e, frameNum, ev, buf, visibility, style)
-			continue
-		}
-
-		if ev.EventType == "overlay" {
-			handleOverlayEvent(e, frameNum, ev, buf, visibility)
-			continue
-		}
-
-		if ev.EventType == "transition" {
-			handleTransitionEvent(e, frameNum, ev, buf, visibility)
-			continue
-		}
-
-		if ev.EventType == "counter" {
-			handleCounterEvent(e, frameNum, ev, buf, visibility, style)
-			continue
+			if ev.EventType == "slide" {
+				handleSlideEvent(e, frameNum, ev, buf, visibility, slideAnimFrames, cam)
+				appendEvLog(0)
+				continue
+			}
+			if ev.EventType == "lower3rd" {
+				handleLower3rdEvent(e, frameNum, ev, buf, cam)
+				appendEvLog(0)
+				continue
+			}
+			if ev.EventType == "arrow" || ev.EventType == "arrow_static" {
+				handleArrowEvent(e, frameNum, ev, buf, visibility)
+				appendEvLog(0)
+				continue
+			}
+			if ev.EventType == "highlight" {
+				handleHighlightEvent(e, frameNum, ev, buf, visibility)
+				appendEvLog(0)
+				continue
+			}
+			if ev.EventType == "compare" {
+				handleCompareEvent(e, frameNum, ev, buf, visibility, style)
+				appendEvLog(0)
+				continue
+			}
+			if ev.EventType == "overlay" {
+				handleOverlayEvent(e, frameNum, ev, buf, visibility)
+				appendEvLog(0)
+				continue
+			}
+			if ev.EventType == "transition" {
+				handleTransitionEvent(e, frameNum, ev, buf, visibility)
+				appendEvLog(0)
+				continue
+			}
+			if ev.EventType == "counter" {
+				handleCounterEvent(e, frameNum, ev, buf, visibility, style)
+				appendEvLog(0)
+				continue
+			}
+		} else {
+			if ev.EventType == "slide" {
+				handleSlideEvent(e, frameNum, ev, buf, visibility, slideAnimFrames, cam)
+				continue
+			}
+			if ev.EventType == "lower3rd" {
+				handleLower3rdEvent(e, frameNum, ev, buf, cam)
+				continue
+			}
+			if ev.EventType == "arrow" || ev.EventType == "arrow_static" {
+				handleArrowEvent(e, frameNum, ev, buf, visibility)
+				continue
+			}
+			if ev.EventType == "highlight" {
+				handleHighlightEvent(e, frameNum, ev, buf, visibility)
+				continue
+			}
+			if ev.EventType == "compare" {
+				handleCompareEvent(e, frameNum, ev, buf, visibility, style)
+				continue
+			}
+			if ev.EventType == "overlay" {
+				handleOverlayEvent(e, frameNum, ev, buf, visibility)
+				continue
+			}
+			if ev.EventType == "transition" {
+				handleTransitionEvent(e, frameNum, ev, buf, visibility)
+				continue
+			}
+			if ev.EventType == "counter" {
+				handleCounterEvent(e, frameNum, ev, buf, visibility, style)
+				continue
+			}
 		}
 
 		e.AssetMu.RLock()
 		img, ok := e.Assets[ev.TargetImage]
 		e.AssetMu.RUnlock()
 		if !ok {
+			if e.EventLog != nil && e.EventLog.Enabled {
+				e.EventLog.Append(EventLogEntry{
+					Frame:      frameNum,
+					EventID:    logID,
+					TsMs:       tsMs,
+					Progress:   evProgress,
+					Visibility: visibility,
+				})
+			}
 			continue
 		}
 
@@ -318,13 +579,38 @@ func (e *Engine) RenderFrame(frameNum int, events []model.FrameEvent, cam Camera
 		}
 
 		easedProgress := EaseInOut(CalcProgress(frameNum, ev.StartFrame, ev.EndFrame))
+		evProgress = easedProgress
 
 		destRect := image.Rect(renderX, renderY, renderX+img.Bounds().Dx(), renderY+img.Bounds().Dy())
+
+		logEnd := func() {
+			if e.EventLog != nil && e.EventLog.Enabled {
+				invert := int64(localInvertColorTime - evInvertS)
+				scale := int64(localScaleAssetTime - evScaleS)
+				mask := int64(localMaskGenTime - evMaskS)
+				frontier := int64(localFrontierTime - evFrontierS)
+				drawN := int64(localDrawMaskTime - evDrawS)
+				e.EventLog.Append(EventLogEntry{
+					Frame:      frameNum,
+					EventID:    logID,
+					TsMs:       tsMs,
+					InvertNs:   invert,
+					ScaleNs:    scale,
+					MaskNs:     mask,
+					FrontierNs: frontier,
+					DrawNs:     drawN,
+					TotalNs:    invert + scale + mask + frontier + drawN,
+					Progress:   evProgress,
+					Visibility: visibility,
+				})
+			}
+		}
 
 		if ev.EventType == "static" {
 			tDrawStart := time.Now()
 			DrawWithMask(buf, destRect, img, visibility)
 			localDrawMaskTime += time.Since(tDrawStart)
+			logEnd()
 			continue
 		}
 
@@ -347,11 +633,13 @@ func (e *Engine) RenderFrame(frameNum int, events []model.FrameEvent, cam Camera
 			}
 			handVisible = true
 			activeHandStyle = ResolveStr(ev.HandStyle, "default")
+			logEnd()
 			continue
 		}
 
 		if ev.EventType == "erase" {
 			if easedProgress >= 1.0 {
+				logEnd()
 				continue
 			}
 			tMaskStart := time.Now()
@@ -372,6 +660,7 @@ func (e *Engine) RenderFrame(frameNum int, events []model.FrameEvent, cam Camera
 			activeHandAngle = 0
 			handVisible = true
 			activeHandStyle = ResolveStr(ev.HandStyle, "eraser")
+			logEnd()
 			continue
 		}
 
@@ -387,14 +676,14 @@ func (e *Engine) RenderFrame(frameNum int, events []model.FrameEvent, cam Camera
 			tDrawStart := time.Now()
 			if easedProgress >= 0.9 {
 				factor := (easedProgress - 0.9) / 0.1
-				for i := range mask.Pix {
-					val := float64(mask.Pix[i])
-					mask.Pix[i] = uint8(val + (255.0-val)*factor)
+				for j := range mask.Pix {
+					val := float64(mask.Pix[j])
+					mask.Pix[j] = uint8(val + (255.0-val)*factor)
 				}
 			}
 			if visibility < 1.0 {
-				for i := range mask.Pix {
-					mask.Pix[i] = uint8(float64(mask.Pix[i]) * visibility)
+				for j := range mask.Pix {
+					mask.Pix[j] = uint8(float64(mask.Pix[j]) * visibility)
 				}
 			}
 			draw.DrawMask(buf, destRect, img, image.Point{}, mask, image.Point{}, draw.Over)
@@ -419,6 +708,8 @@ func (e *Engine) RenderFrame(frameNum int, events []model.FrameEvent, cam Camera
 				activeHandStyle = "default"
 			}
 		}
+
+		logEnd()
 	}
 
 	if handVisible {
