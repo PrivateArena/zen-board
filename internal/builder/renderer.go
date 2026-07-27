@@ -16,7 +16,7 @@ type zoomKeyframe struct {
 	target string
 }
 
-func RenderTimeline(conf *model.Project, timeline *model.Timeline, engine *render.Engine, pipe *ffmpeg.Pipe, styleKeyframes []StyleKeyframe, pLines []model.ProcessedLine, cameraEnabled bool) error {
+func RenderTimeline(conf *model.Project, timeline *model.Timeline, engine *render.Engine, pipe *ffmpeg.Pipe, styleKeyframes []StyleKeyframe, pLines []model.ProcessedLine, cameraEnabled bool, eventLog *render.EventLogger) error {
 	totalFrames := int(timeline.Duration*float64(conf.FPS)) + conf.FreezeFrames
 
 	// Clamp all event EndFrame boundaries to totalFrames - 1 to handle sentinels safely
@@ -114,13 +114,30 @@ func RenderTimeline(conf *model.Project, timeline *model.Timeline, engine *rende
 
 	// Feed jobs in a goroutine
 	go func() {
+		prevActive := make(map[int]bool)
 		for f := 0; f < totalFrames; f++ {
+			for i, ev := range timeline.Events {
+				nowActive := f >= ev.StartFrame && f <= ev.EndFrame
+				if nowActive && !prevActive[i] {
+					eventLog.LogTransition("ENTER", f, ev, conf.FPS)
+				}
+				if !nowActive && prevActive[i] {
+					eventLog.LogTransition("EXIT", f, ev, conf.FPS)
+				}
+				prevActive[i] = nowActive
+			}
 			sem <- struct{}{}
 			engine.Pool.Jobs <- render.FrameJob{
 				Index:  f,
 				Events: timeline.Events,
 				Cam:    cameraStates[f],
 				Style:  styleStates[f],
+			}
+		}
+		// Flush trailing EXIT for events still active at render end
+		for i, ev := range timeline.Events {
+			if prevActive[i] {
+				eventLog.LogTransition("EXIT", totalFrames-1, ev, conf.FPS)
 			}
 		}
 		close(engine.Pool.Jobs)
