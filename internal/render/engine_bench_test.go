@@ -8,16 +8,20 @@ import (
 )
 
 func createTestEngine(b *testing.B) *Engine {
-	// Try different relative paths depending on test execution context
-	paths := []string{"../../assets/hand.png", "assets/hand.png", "../assets/hand.png"}
 	var engine *Engine
 	var err error
-	for _, p := range paths {
-		engine, err = NewEngine(1920, 1080, 60, p, 128, 128)
-		if err == nil {
+	cursorDirs := []string{"../../assets/cursors", "assets/cursors", "../assets/cursors"}
+	var registry *CursorRegistry
+	for _, d := range cursorDirs {
+		registry = NewCursorRegistry(d)
+		if p := registry.Get("hand"); p != nil {
 			break
 		}
 	}
+	if registry.Get("hand") == nil {
+		b.Fatalf("failed to find hand cursor preset")
+	}
+	engine, err = NewEngine(1920, 1080, 60, registry, "hand")
 	if err != nil {
 		b.Fatalf("failed to create engine: %v", err)
 	}

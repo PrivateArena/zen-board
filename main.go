@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"image"
 	"log"
 	"os"
 	"path/filepath"
@@ -75,7 +76,8 @@ func Run() error {
 	fs := flag.NewFlagSet("zen-board", flag.ContinueOnError)
 	scriptPath := fs.String("script", "", "Path to .zen script file")
 	assetsDir := fs.String("assets", conf.AssetsDir, "Directory containing image assets")
-	handPath := fs.String("hand", "./assets/hand.png", "Path to hand.png sprite")
+	handPath := fs.String("hand", "./assets/hand.png", "[deprecated] Path to hand.png sprite")
+	cursorFlag := fs.String("cursor", conf.Cursor, "Cursor preset name (hand, magic_wand, two_finger)")
 	outputPath := fs.String("o", conf.OutputPath, "Output video path")
 	fps := fs.Int("fps", conf.FPS, "Frames per second")
 	width := fs.Int("w", conf.Width, "Canvas width")
@@ -124,6 +126,7 @@ func Run() error {
 	conf.CameraEnabled = *cameraEnabled
 	conf.FreezeFrames = *freezeFrames
 	conf.TTSCacheDir = *ttsCacheDir
+	conf.Cursor = *cursorFlag
 
 	if conf.ScriptPath == "" {
 		return fmt.Errorf("-script is required")
@@ -210,9 +213,37 @@ func Run() error {
 	}
 
 	// 6. Preparing Engine & Assets
-	engine, err := render.NewEngine(conf.Width, conf.Height, conf.FPS, *handPath, conf.HandTipX, conf.HandTipY)
-	if err != nil {
-		return fmt.Errorf("engine: %w", err)
+	cursorDir := filepath.Join(conf.AssetsDir, "cursors")
+	cursorRegistry := render.NewCursorRegistry(cursorDir)
+	_ = cursorRegistry.Get("hand") // warm hand cache during init
+
+	defaultCursor := *cursorFlag
+	if defaultCursor == "" {
+		defaultCursor = "hand"
+	}
+
+	var engine *render.Engine
+	if *handPath != "./assets/hand.png" {
+		hr, err := render.NewHandRenderer(*handPath, conf.HandTipX, conf.HandTipY)
+		if err != nil {
+			return fmt.Errorf("hand renderer: %w", err)
+		}
+		engine = &render.Engine{
+			Width:          conf.Width,
+			Height:         conf.Height,
+			FPS:            conf.FPS,
+			Pool:           render.NewRenderPool(conf.Width, conf.Height),
+			Hand:           hr,
+			CursorRegistry: cursorRegistry,
+			DefaultCursor:  defaultCursor,
+			Assets:         make(map[string]image.Image),
+			ScaledAssets:   make(map[string]image.Image),
+		}
+	} else {
+		engine, err = render.NewEngine(conf.Width, conf.Height, conf.FPS, cursorRegistry, defaultCursor)
+		if err != nil {
+			return fmt.Errorf("engine: %w", err)
+		}
 	}
 	engine.FastMode = *fast || *preview
 

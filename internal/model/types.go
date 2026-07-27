@@ -9,6 +9,7 @@ type Project struct {
 	Height            int     `json:"height"`
 	TTSAddr           string  `json:"tts_addr"`
 	Speed             float64 `json:"speed"`
+	Cursor            string  `json:"cursor"`
 	HandTipX          int     `json:"hand_tip_x"`
 	HandTipY          int     `json:"hand_tip_y"`
 	Voice             string  `json:"voice"`
@@ -27,6 +28,7 @@ func NewDefaultProject() *Project {
 		FPS:          30,
 		Width:        1920,
 		Height:       1080,
+		Cursor:       "hand",
 		TTSAddr:      "http://localhost:5000",
 		Speed:        1.0,
 		HandTipX:     30,
@@ -70,6 +72,7 @@ type FrameEvent struct {
 	EventType     string  // "draw", "erase", "move", "text", "static", "slide", "lower3rd", "overlay"
 	MaskStyle     string  // "diagonal", "ltr", "ttb"
 	HandStyle     string  // "pencil", "chalk", "eraser", "marker"
+	Cursor        string  // "hand", "magic_wand", "two_finger", ... ; empty defaults to "hand"
 	DestX, DestY  int     // destination for "move" events
 	ZoomFocus     string  `json:"zoom_focus"`
 	// Slide-specific fields

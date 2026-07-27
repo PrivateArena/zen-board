@@ -33,31 +33,29 @@ type RenderStats struct {
 }
 
 type Engine struct {
-	Width, Height int
-	FPS           int
-	Pool          *RenderPool
-	Hand          *HandRenderer
-	Assets        map[string]image.Image
-	ScaledAssets  map[string]image.Image
-	AssetMu       sync.RWMutex
-	Stats         RenderStats
-	FastMode      bool
+	Width, Height  int
+	FPS            int
+	Pool           *RenderPool
+	Hand           *HandRenderer
+	CursorRegistry *CursorRegistry
+	DefaultCursor  string
+	Assets         map[string]image.Image
+	ScaledAssets   map[string]image.Image
+	AssetMu        sync.RWMutex
+	Stats          RenderStats
+	FastMode       bool
 }
 
-func NewEngine(w, h, fps int, handPath string, tipX, tipY int) (*Engine, error) {
-	hr, err := NewHandRenderer(handPath, tipX, tipY)
-	if err != nil {
-		return nil, err
-	}
-
+func NewEngine(w, h, fps int, registry *CursorRegistry, defaultCursor string) (*Engine, error) {
 	return &Engine{
-		Width:        w,
-		Height:       h,
-		FPS:          fps,
-		Pool:         NewRenderPool(w, h),
-		Hand:         hr,
-		Assets:       make(map[string]image.Image),
-		ScaledAssets: make(map[string]image.Image),
+		Width:          w,
+		Height:         h,
+		FPS:            fps,
+		Pool:           NewRenderPool(w, h),
+		CursorRegistry: registry,
+		DefaultCursor:  defaultCursor,
+		Assets:         make(map[string]image.Image),
+		ScaledAssets:   make(map[string]image.Image),
 	}, nil
 }
 
@@ -139,6 +137,7 @@ func (e *Engine) RenderFrame(frameNum int, events []model.FrameEvent, cam Camera
 	var handVisible bool
 	var activeHandStyle string = "default"
 	var activeHandAngle int = 0
+	var activeHandCursor string
 
 	maskCfg := DefaultMaskConfig()
 
@@ -209,6 +208,7 @@ func (e *Engine) RenderFrame(frameNum int, events []model.FrameEvent, cam Camera
 				activeHandX = handX
 				activeHandY = handY
 				handVisible = true
+				activeHandCursor = ResolveStr(ev.Cursor, e.DefaultCursor)
 				if style == "blackboard" || style == "glassboard" {
 					activeHandStyle = "chalk"
 				} else {
@@ -347,6 +347,7 @@ func (e *Engine) RenderFrame(frameNum int, events []model.FrameEvent, cam Camera
 			}
 			handVisible = true
 			activeHandStyle = ResolveStr(ev.HandStyle, "default")
+			activeHandCursor = ResolveStr(ev.Cursor, e.DefaultCursor)
 			continue
 		}
 
@@ -372,6 +373,7 @@ func (e *Engine) RenderFrame(frameNum int, events []model.FrameEvent, cam Camera
 			activeHandAngle = 0
 			handVisible = true
 			activeHandStyle = ResolveStr(ev.HandStyle, "eraser")
+			activeHandCursor = ResolveStr(ev.Cursor, e.DefaultCursor)
 			continue
 		}
 
@@ -418,12 +420,20 @@ func (e *Engine) RenderFrame(frameNum int, events []model.FrameEvent, cam Camera
 			} else {
 				activeHandStyle = "default"
 			}
+			activeHandCursor = ResolveStr(ev.Cursor, e.DefaultCursor)
 		}
 	}
 
 	if handVisible {
 		tHandStart := time.Now()
-		e.Hand.Draw(buf, activeHandX, activeHandY, frameNum, activeHandStyle, activeHandAngle)
+		cursorName := ResolveStr(activeHandCursor, e.DefaultCursor)
+		preset := e.CursorRegistry.Get(cursorName)
+		if preset != nil {
+			layers := CursorInterpolate(preset, frameNum, e.FPS, activeHandX, activeHandY, activeHandAngle, activeHandStyle)
+			DrawCursorLayers(buf, layers)
+		} else if e.Hand != nil {
+			e.Hand.Draw(buf, activeHandX, activeHandY, frameNum, activeHandStyle, activeHandAngle)
+		}
 		localDrawHandTime = time.Since(tHandStart)
 	}
 

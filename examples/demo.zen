@@ -6,7 +6,7 @@ Now let's zoom to the bottom right quadrant. [zoom:BR] Here are the pyramids of 
 [wait:1.5]
 We will now clear the board. [clear] See, the board is clean!
 [wait:1.5]
-Let's reset the camera. [zoom:reset] We will render a robot in the center. [draw:robot]
+Let's reset the camera. [zoom:reset] We will render a robot in the center using a magic wand cursor. [draw:robot:cursor=magic_wand]
 [wait:1.5]
 Let's shift the robot to the bottom left. [move:robot:BL]
 [wait:1.0]

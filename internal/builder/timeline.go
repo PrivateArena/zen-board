@@ -52,6 +52,14 @@ type TimelineCompilation struct {
 	SubtitleEvents  []model.SubtitleEvent
 }
 
+func extractCursor(variants map[string]string, defaultCursor string) string {
+	if v, ok := variants["cursor"]; ok {
+		delete(variants, "cursor")
+		return v
+	}
+	return defaultCursor
+}
+
 func CompileTimeline(conf *model.Project, allWordTimings []model.WordTiming, pLines []model.ProcessedLine, exactDuration float64, audioTmp string) (*TimelineCompilation, error) {
 	timeline := &model.Timeline{
 		Words:     allWordTimings,
@@ -855,6 +863,8 @@ func CompileTimeline(conf *model.Project, allWordTimings []model.WordTiming, pLi
 				drawFocus = currentZoomFocus
 			}
 
+			cursorName := extractCursor(action.AssetVariant, "hand")
+
 			// Reveal animation event
 			timeline.Events = append(timeline.Events, model.FrameEvent{
 				TargetImage:  actionTag,
@@ -867,6 +877,7 @@ func CompileTimeline(conf *model.Project, allWordTimings []model.WordTiming, pLi
 				EventType:    "draw",
 				MaskStyle:    "diagonal",
 				HandStyle:    "pencil",
+				Cursor:       cursorName,
 				ZoomFocus:    drawFocus,
 				AssetVariant: action.AssetVariant,
 			})

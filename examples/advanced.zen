@@ -2,7 +2,9 @@
 [wait:1.0]
 [subtitle:top][style:blackboard][text:"Hello Dynamic Text":BL:sans:48:bold] Welcome to blackboard mode.
 [wait:1.0]
-[subtitle:off][move:test:BR] Moving asset to bottom right.
+[subtitle:off][draw:robot:cursor=magic_wand:TR] Draw robot with magic wand cursor.
+[wait:1.0]
+[move:test:BR] Moving asset to bottom right.
 [wait:1.0]
 [erase:test] Erasing the asset.
 [wait:1.0]
