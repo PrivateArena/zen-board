@@ -32,12 +32,12 @@ type AnimationConfig struct {
 }
 
 type CursorPreset struct {
-	Name        string                   `json:"name"`
-	Version     int                      `json:"version"`
-	Sprites     map[string]string        `json:"sprites"`
-	Tip         map[string]TipOffset     `json:"tip"`
-	SpriteCount int                      `json:"sprite_count"`
-	Animation   *AnimationConfig         `json:"animation,omitempty"`
+	Name        string               `json:"name"`
+	Version     int                  `json:"version"`
+	Sprites     map[string]string    `json:"sprites"`
+	Tip         map[string]TipOffset `json:"tip"`
+	SpriteCount int                  `json:"sprite_count"`
+	Animation   *AnimationConfig     `json:"animation,omitempty"`
 	// resolved at load time
 	dir      string
 	imgCache map[string]image.Image // style → decoded image
@@ -180,11 +180,11 @@ func getTip(p *CursorPreset, styleKey string) (int, int) {
 }
 
 var knownEasing = map[string]func(float64) float64{
-	"linear":          func(t float64) float64 { return t },
-	"ease-in":         func(t float64) float64 { return t * t },
-	"ease-out":        func(t float64) float64 { return t * (2 - t) },
-	"ease-in-out":     EaseInOut,
-	"ease-out-cubic":  EaseOutCubic,
+	"linear":            func(t float64) float64 { return t },
+	"ease-in":           func(t float64) float64 { return t * t },
+	"ease-out":          func(t float64) float64 { return t * (2 - t) },
+	"ease-in-out":       EaseInOut,
+	"ease-out-cubic":    EaseOutCubic,
 	"ease-in-out-cubic": EaseInOutCubic,
 }
 
@@ -349,5 +349,3 @@ func FallbackPlaceholderSprite() *image.RGBA {
 	draw.Draw(img, img.Bounds(), red, image.Point{}, draw.Src)
 	return img
 }
-
-

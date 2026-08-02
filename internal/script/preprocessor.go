@@ -49,7 +49,7 @@ func SplitInlineWaits(lines []model.ScriptLine) []model.ScriptLine {
 			if splitWordIdx > lastWordIdx {
 				partWords := words[lastWordIdx:splitWordIdx]
 				partText := strings.Join(partWords, " ")
-				
+
 				// Collect actions that fall in this range
 				var partActions []model.DrawAction
 				for _, act := range line.Actions {

@@ -140,7 +140,7 @@ func CreateSilentWAV(params WAVParams, duration float64) []byte {
 	}
 	pcm := make([]byte, dataSize) // all zeros is silence in standard PCM format
 	header := CreateWAVHeader(params, dataSize)
-	
+
 	result := make([]byte, len(header)+len(pcm))
 	copy(result[0:], header)
 	copy(result[len(header):], pcm)

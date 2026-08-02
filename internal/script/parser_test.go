@@ -159,4 +159,3 @@ func TestParseV3Tags(t *testing.T) {
 		}
 	}
 }
-

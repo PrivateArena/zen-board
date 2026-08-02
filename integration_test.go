@@ -33,11 +33,11 @@ func TestIntegration(t *testing.T) {
 	}
 
 	outputPath := filepath.Join(tmpDir, "output.mp4")
-	
+
 	// Create a dummy asset and hand sprite
 	assetsDir := filepath.Join(tmpDir, "assets")
 	os.Mkdir(assetsDir, 0755)
-	
+
 	createDummyPNG(filepath.Join(assetsDir, "test.png"))
 	handPath := filepath.Join(tmpDir, "hand.png")
 	createDummyPNG(handPath)
@@ -55,7 +55,7 @@ func TestIntegration(t *testing.T) {
 		"-assets", assetsDir,
 		"-hand", handPath,
 		"-fps", "10", // Low FPS for speed
-		"-w", "100",   // Small resolution
+		"-w", "100", // Small resolution
 		"-h", "100",
 		"-tts-cache", filepath.Join(tmpDir, "tts-cache"),
 	}
@@ -162,11 +162,11 @@ func TestIntegrationDisableTranscript(t *testing.T) {
 	}
 
 	outputPath := filepath.Join(tmpDir, "output.mp4")
-	
+
 	// Create a dummy asset and hand sprite
 	assetsDir := filepath.Join(tmpDir, "assets")
 	os.Mkdir(assetsDir, 0755)
-	
+
 	createDummyPNG(filepath.Join(assetsDir, "test.png"))
 	handPath := filepath.Join(tmpDir, "hand.png")
 	createDummyPNG(handPath)
@@ -226,18 +226,18 @@ func TestIntegrationAdvancedDSL(t *testing.T) {
 [erase:test] Erasing the asset.
 [wait:1.0]
 All done.`
-	
+
 	err = os.WriteFile(scriptPath, []byte(dslScript), 0644)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	outputPath := filepath.Join(tmpDir, "output.mp4")
-	
+
 	// Create a dummy asset and hand sprite
 	assetsDir := filepath.Join(tmpDir, "assets")
 	os.Mkdir(assetsDir, 0755)
-	
+
 	createDummyPNG(filepath.Join(assetsDir, "test.png"))
 	handPath := filepath.Join(tmpDir, "hand.png")
 	createDummyPNG(handPath)
@@ -334,4 +334,3 @@ func TestIntegrationFastMode(t *testing.T) {
 		t.Errorf("Output file %s was not created in Fast Mode", outputPath)
 	}
 }
-

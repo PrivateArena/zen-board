@@ -46,9 +46,9 @@ type ScriptLine struct {
 }
 
 type DrawAction struct {
-	Tag              string            // e.g. "king_death"
-	WordIndex        int               // Trigger after this word finishes
-	ImagePath        string            // Resolved path to asset PNG
+	Tag              string // e.g. "king_death"
+	WordIndex        int    // Trigger after this word finishes
+	ImagePath        string // Resolved path to asset PNG
 	X, Y             int
 	W, H             int
 	RevealDuration   float64           // custom duration in seconds
@@ -67,17 +67,17 @@ type FrameEvent struct {
 	TargetImage   string
 	StartFrame    int
 	EndFrame      int
-	X, Y          int     // Position on canvas
-	Width, Height int     // Render dimensions
-	EventType     string  // "draw", "erase", "move", "text", "static", "slide", "lower3rd", "overlay"
-	MaskStyle     string  // "diagonal", "ltr", "ttb"
-	HandStyle     string  // "pencil", "chalk", "eraser", "marker"
-	Cursor        string  // "hand", "magic_wand", "two_finger", ... ; empty defaults to "hand"
-	DestX, DestY  int     // destination for "move" events
-	ZoomFocus     string  `json:"zoom_focus"`
+	X, Y          int    // Position on canvas
+	Width, Height int    // Render dimensions
+	EventType     string // "draw", "erase", "move", "text", "static", "slide", "lower3rd", "overlay"
+	MaskStyle     string // "diagonal", "ltr", "ttb"
+	HandStyle     string // "pencil", "chalk", "eraser", "marker"
+	Cursor        string // "hand", "magic_wand", "two_finger", ... ; empty defaults to "hand"
+	DestX, DestY  int    // destination for "move" events
+	ZoomFocus     string `json:"zoom_focus"`
 	// Slide-specific fields
-	Transition string  // "none","fade","pop","slide-left","slide-right","slide-up","slide-down"
-	FitMode    string  // "fit","fill","stretch"
+	Transition string // "none","fade","pop","slide-left","slide-right","slide-up","slide-down"
+	FitMode    string // "fit","fill","stretch"
 	// Extended media fields
 	Opacity        float64
 	ColorHex       string
@@ -102,7 +102,6 @@ type SubtitleEvent struct {
 	State string // "top", "bottom", "off"
 }
 
-
 type Timeline struct {
 	Events    []FrameEvent
 	Words     []WordTiming
@@ -116,4 +115,3 @@ type ProcessedLine struct {
 	WordOffset int
 	Actions    []DrawAction
 }
-

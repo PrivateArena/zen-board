@@ -24,7 +24,7 @@ func RunCLI(args []string, defaultAssetsDir string) error {
 		fs := flag.NewFlagSet("assets index", flag.ExitOnError)
 		dirFlag := fs.String("dir", assetsDir, "Assets directory path")
 		fs.Parse(args[1:])
-		
+
 		fmt.Printf("Indexing assets in %s...\n", *dirFlag)
 		idx, err := AutoIndex(*dirFlag)
 		if err != nil {
@@ -69,7 +69,7 @@ func RunCLI(args []string, defaultAssetsDir string) error {
 			if a.HasBg {
 				bgStatus = "Needs Bg"
 			}
-			fmt.Printf("%-20s %-35s %-12s %-6s %-12s %s\n", 
+			fmt.Printf("%-20s %-35s %-12s %-6s %-12s %s\n",
 				a.ID, a.File, a.Style, bgStatus, a.Source, strings.Join(a.Tags, ","))
 			count++
 		}

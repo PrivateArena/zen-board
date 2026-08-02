@@ -149,7 +149,6 @@ func Run() error {
 	}
 	ttsDuration := time.Since(tTtsStart)
 
-
 	// Derive authoritative duration from the actual concatenated WAV
 	exactDuration, err := tts.GetWAVDuration(finalAudio)
 	if err != nil {

@@ -164,7 +164,7 @@ func removeBgChromaKey(path string) error {
 		for x := bounds.Min.X; x < bounds.Max.X; x++ {
 			c := img.At(x, y)
 			r, g, b, a := c.RGBA()
-			
+
 			// Convert 16-bit color channel to 8-bit
 			r8 := uint8(r >> 8)
 			g8 := uint8(g >> 8)
@@ -195,4 +195,3 @@ func removeBgChromaKey(path string) error {
 
 	return nil
 }
-

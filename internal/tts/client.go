@@ -54,9 +54,9 @@ func (c *TTSClient) Synthesize(text string, speed float64, voice string) ([]byte
 // TTSResult carries synthesized audio plus optional ground-truth word timings.
 // Timings is nil when the server is an older version that does not support ?timestamps=1.
 type TTSResult struct {
-	Audio    []byte           // complete WAV bytes
+	Audio    []byte             // complete WAV bytes
 	Timings  []model.WordTiming // nil if server did not return timings
-	Duration float64          // exact audio duration derived from WAV samples
+	Duration float64            // exact audio duration derived from WAV samples
 }
 
 type CachedMetadata struct {

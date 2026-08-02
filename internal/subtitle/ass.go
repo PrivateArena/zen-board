@@ -17,7 +17,7 @@ func GenerateASS(timings []model.WordTiming, width, height int, events []model.S
 
 	b.WriteString("[V4+ Styles]\n")
 	b.WriteString("Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\n")
-	
+
 	fontSize := height / 18
 	if fontSize < 12 {
 		fontSize = 12
@@ -26,7 +26,7 @@ func GenerateASS(timings []model.WordTiming, width, height int, events []model.S
 	if marginV < 5 {
 		marginV = 5
 	}
-	
+
 	// Default Style (Bottom-Center, Alignment = 2)
 	b.WriteString(fmt.Sprintf("Style: Default,Arial,%d,&H00FFFFFF,&H000000FF,&H00000000,&H64000000,0,0,0,0,100,100,0,0,1,3,2,2,10,10,%d,1\n", fontSize, marginV))
 	// Top Style (Top-Center, Alignment = 8)
@@ -49,11 +49,11 @@ func GenerateASS(timings []model.WordTiming, width, height int, events []model.S
 			end = len(timings)
 		}
 		chunk := timings[i:end]
-		
+
 		startTimeSec := chunk[0].Start
 		startTime := formatASSTime(startTimeSec)
 		endTime := formatASSTime(chunk[len(chunk)-1].End)
-		
+
 		// Determine subtitle state at the chunk start time
 		state := "bottom"
 		for _, ev := range events {
@@ -77,7 +77,7 @@ func GenerateASS(timings []model.WordTiming, width, height int, events []model.S
 				lineBuilder.WriteString(" ")
 			}
 		}
-		
+
 		b.WriteString(fmt.Sprintf("Dialogue: 0,%s,%s,%s,,0,0,0,,%s\n", startTime, endTime, styleName, lineBuilder.String()))
 	}
 

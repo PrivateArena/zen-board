@@ -12,15 +12,15 @@ import (
 )
 
 type AssetEntry struct {
-	ID         string    `json:"id"`
-	File       string    `json:"file"`
-	Tags       []string  `json:"tags"`
-	HasBg      bool      `json:"has_bg"`
-	Source     string    `json:"source"` // "manual", "generated", "imported-svg", "imported-png"
-	Style      string    `json:"style"`  // "vector", "realistic"
-	Prompt     string    `json:"prompt"`
-	Resolution [2]int    `json:"resolution"`
-	CreatedAt  string    `json:"created_at"`
+	ID         string   `json:"id"`
+	File       string   `json:"file"`
+	Tags       []string `json:"tags"`
+	HasBg      bool     `json:"has_bg"`
+	Source     string   `json:"source"` // "manual", "generated", "imported-svg", "imported-png"
+	Style      string   `json:"style"`  // "vector", "realistic"
+	Prompt     string   `json:"prompt"`
+	Resolution [2]int   `json:"resolution"`
+	CreatedAt  string   `json:"created_at"`
 }
 
 type AssetIndex struct {
