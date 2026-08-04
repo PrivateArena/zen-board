@@ -21,7 +21,7 @@ var (
 	sfxRegex        = regexp.MustCompile(`\[sfx:([^\]]+)\]`)
 	subtitleRegex   = regexp.MustCompile(`\[subtitle:([^\]]+)\]`)
 	slideRegex      = regexp.MustCompile(`\[slide:([^\]]+)\]`)
-	lower3rdRegex   = regexp.MustCompile(`\[lower3rd:([^\]]+)\]`)
+	bannerRegex     = regexp.MustCompile(`\[banner:([^\]]+)\]`)
 	arrowRegex      = regexp.MustCompile(`\[arrow:([^\]]+)\]`)
 	highlightRegex  = regexp.MustCompile(`\[highlight:([^\]]+)\]`)
 	compareRegex    = regexp.MustCompile(`\[compare:([^\]]+)\]`)
@@ -189,7 +189,7 @@ func extractActions(line string) (string, []model.DrawAction) {
 	extractStandardTag(genRegex, "gen:")
 
 	extractComplexTag(slideRegex, "slide:")
-	extractComplexTag(lower3rdRegex, "lower3rd:")
+	extractComplexTag(bannerRegex, "banner:")
 	extractComplexTag(arrowRegex, "arrow:")
 	extractComplexTag(highlightRegex, "highlight:")
 	extractComplexTag(compareRegex, "compare:")

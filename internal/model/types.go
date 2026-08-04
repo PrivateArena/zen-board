@@ -69,7 +69,7 @@ type FrameEvent struct {
 	EndFrame      int
 	X, Y          int    // Position on canvas
 	Width, Height int    // Render dimensions
-	EventType     string // "draw", "erase", "move", "text", "static", "slide", "lower3rd", "overlay"
+	EventType     string // "draw", "erase", "move", "text", "static", "slide", "banner", "overlay"
 	MaskStyle     string // "diagonal", "ltr", "ttb"
 	HandStyle     string // "pencil", "chalk", "eraser", "marker"
 	Cursor        string // "hand", "magic_wand", "two_finger", ... ; empty defaults to "hand"

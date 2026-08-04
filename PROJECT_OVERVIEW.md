@@ -49,7 +49,7 @@ zen-board/
 | `internal/render/easing.go` | Easing functions for smooth progress interpolation | `CalcProgress`, `EaseInOut`, `EaseOutCubic`, `EaseInOutCubic` |
 | `internal/render/mask.go` | Alpha mask generation for reveal/wipe effects | `GenerateMask`, `GetFrontierPoint`, `MaskConfig` |
 | `internal/render/pool.go` | Goroutine worker pool for parallel frame rendering | `RenderPool`, `NewRenderPool`, `FrameJob`, `RenderResult` |
-| `internal/render/lower3rd.go` | Lower-third overlay rendering | `RenderLower3rdPanel` |
+| `internal/render/banner.go` | Bottom banner (title/subtitle) overlay rendering | `RenderBannerPanel` |
 | `internal/render/draw_utils.go` | Masked image compositing helper | `DrawWithMask` |
 | `internal/render/bg_utils.go` | Background style resolution | `ResolveStyleBg`, `ResolveStyleTextColor`, `ResolveStyleBgColor` |
 | `internal/render/mask_utils.go` | Progress-based alpha mask application | `ApplyAlpha`, `ApplyEasedProgressMask` |

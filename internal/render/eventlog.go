@@ -65,7 +65,7 @@ func enrichTarget(ev model.FrameEvent) string {
 		return ev.TargetImage
 	case "slide":
 		return ev.TargetImage + "/" + ev.Transition
-	case "lower3rd":
+	case "banner":
 		return ev.TargetImage
 	case "arrow", "arrow_static":
 		return ev.ArrowFrom + "→" + ev.ArrowTo

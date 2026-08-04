@@ -132,7 +132,7 @@ func TestParseTriggerAfterWord(t *testing.T) {
 }
 
 func TestParseV3Tags(t *testing.T) {
-	input := `Show [slide:pyramids:fullscreen:fade:fill] and [lower3rd:"Slide Primitive":"Subtitle":3.5:FF5555] and [arrow:TL:BR:curved:0.5] and [highlight:100,200,400,150:pulse:2.0] and [compare:robot:world:"Left":"Right"] and [transition:fade-black:0.8] and [overlay:logo:0.3:BR] and [counter:0:100:2.0:%d]`
+	input := `Show [slide:pyramids:fullscreen:fade:fill] and [banner:"Slide Primitive":"Subtitle":3.5:FF5555] and [arrow:TL:BR:curved:0.5] and [highlight:100,200,400,150:pulse:2.0] and [compare:robot:world:"Left":"Right"] and [transition:fade-black:0.8] and [overlay:logo:0.3:BR] and [counter:0:100:2.0:%d]`
 	lines := Parse(input)
 	if len(lines) != 1 {
 		t.Fatalf("Expected 1 line, got %d", len(lines))
@@ -140,7 +140,7 @@ func TestParseV3Tags(t *testing.T) {
 	actions := lines[0].Actions
 	expectedTags := []string{
 		"slide:pyramids:fullscreen:fade:fill",
-		"lower3rd:\"Slide Primitive\":\"Subtitle\":3.5:FF5555",
+		"banner:\"Slide Primitive\":\"Subtitle\":3.5:FF5555",
 		"arrow:TL:BR:curved:0.5",
 		"highlight:100,200,400,150:pulse:2.0",
 		"compare:robot:world:\"Left\":\"Right\"",

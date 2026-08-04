@@ -15,13 +15,13 @@ import (
 )
 
 var (
-	Lower3rdFontBold    = gobold.TTF
-	Lower3rdFontRegular = goregular.TTF
+	BannerFontBold    = gobold.TTF
+	BannerFontRegular = goregular.TTF
 )
 
-// RenderLower3rdPanel draws a lower-third panel on a canvas-sized RGBA image.
+// RenderBannerPanel draws a bottom banner (title/subtitle) panel on a canvas-sized RGBA image.
 // title/subtitle/colorHex are encoded in TargetImage as "title|subtitle|#color".
-func RenderLower3rdPanel(canvasW, canvasH int, title, subtitle string, colorHex string) *image.RGBA {
+func RenderBannerPanel(canvasW, canvasH int, title, subtitle string, colorHex string) *image.RGBA {
 	panelH := int(float64(canvasH) * 0.13)
 	if panelH < 80 {
 		panelH = 80
@@ -44,9 +44,9 @@ func RenderLower3rdPanel(canvasW, canvasH int, title, subtitle string, colorHex 
 	}
 	roundedRect(panel, panelX, panelY, 7, panelH, 14, accent)
 
-	titleFace := parseFontFace(Lower3rdFontBold, 50)
+	titleFace := parseFontFace(BannerFontBold, 50)
 	defer titleFace.Close()
-	subFace := parseFontFace(Lower3rdFontRegular, 31)
+	subFace := parseFontFace(BannerFontRegular, 31)
 	defer subFace.Close()
 
 	left := panelX + 31

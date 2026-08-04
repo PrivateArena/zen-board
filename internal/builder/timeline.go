@@ -149,7 +149,7 @@ func CompileTimeline(conf *model.Project, allWordTimings []model.WordTiming, pLi
 			preset := ""
 
 			isSpecialPrefix := false
-			specialPrefixes := []string{"WAIT:", "zoom:", "style:", "chapter:", "sfx:", "subtitle:", "text:", "erase:", "move:", "gen:", "slide:", "lower3rd:", "arrow:", "highlight:", "compare:", "transition:", "overlay:", "counter:"}
+			specialPrefixes := []string{"WAIT:", "zoom:", "style:", "chapter:", "sfx:", "subtitle:", "text:", "erase:", "move:", "gen:", "slide:", "banner:", "arrow:", "highlight:", "compare:", "transition:", "overlay:", "counter:"}
 			for _, prefix := range specialPrefixes {
 				if strings.HasPrefix(actionTag, prefix) {
 					isSpecialPrefix = true
@@ -580,8 +580,8 @@ func CompileTimeline(conf *model.Project, allWordTimings []model.WordTiming, pLi
 				continue
 			}
 
-			if strings.HasPrefix(action.Tag, "lower3rd:") {
-				rest := strings.TrimPrefix(action.Tag, "lower3rd:")
+			if strings.HasPrefix(action.Tag, "banner:") {
+				rest := strings.TrimPrefix(action.Tag, "banner:")
 				parts := strings.Split(rest, ":")
 				title := ""
 				subtitle := ""
@@ -606,13 +606,13 @@ func CompileTimeline(conf *model.Project, allWordTimings []model.WordTiming, pLi
 				if strings.HasSuffix(action.Tag, "+") {
 					continue
 				}
-				targetID := fmt.Sprintf("__lower3rd_%s|%s|%s", title, subtitle, colorHex)
+				targetID := fmt.Sprintf("__banner_%s|%s|%s", title, subtitle, colorHex)
 				end := startFrame + int(duration*float64(conf.FPS))
 				timeline.Events = append(timeline.Events, model.FrameEvent{
 					TargetImage: targetID,
 					StartFrame:  startFrame,
 					EndFrame:    end,
-					EventType:   "lower3rd",
+					EventType:   "banner",
 					ZoomFocus:   currentZoomFocus,
 				})
 				continue
@@ -927,7 +927,7 @@ func CompileTimeline(conf *model.Project, allWordTimings []model.WordTiming, pLi
 			}
 			continue
 		}
-		if ev.TargetImage == "" || ev.TargetImage == "clear" || strings.HasPrefix(ev.TargetImage, "__text_") || strings.HasPrefix(ev.TargetImage, "__gen_") || strings.HasPrefix(ev.TargetImage, "__lower3rd_") {
+		if ev.TargetImage == "" || ev.TargetImage == "clear" || strings.HasPrefix(ev.TargetImage, "__text_") || strings.HasPrefix(ev.TargetImage, "__gen_") || strings.HasPrefix(ev.TargetImage, "__banner_") {
 			continue
 		}
 		if ev.EventType == "arrow" || ev.EventType == "arrow_static" || ev.EventType == "highlight" || ev.EventType == "counter" || ev.EventType == "transition" {
@@ -1070,7 +1070,7 @@ func PrepareAssets(conf *model.Project, engine *render.Engine, timeline *model.T
 			}
 			continue
 		}
-		if ev.TargetImage == "" || ev.TargetImage == "clear" || strings.HasPrefix(ev.TargetImage, "__text_") || strings.HasPrefix(ev.TargetImage, "__gen_") || strings.HasPrefix(ev.TargetImage, "__lower3rd_") {
+		if ev.TargetImage == "" || ev.TargetImage == "clear" || strings.HasPrefix(ev.TargetImage, "__text_") || strings.HasPrefix(ev.TargetImage, "__gen_") || strings.HasPrefix(ev.TargetImage, "__banner_") {
 			continue
 		}
 		if ev.EventType == "arrow" || ev.EventType == "arrow_static" || ev.EventType == "highlight" || ev.EventType == "counter" || ev.EventType == "transition" {

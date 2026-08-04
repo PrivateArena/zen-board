@@ -197,8 +197,8 @@ func (e *Engine) RenderFrame(frameNum int, events []model.FrameEvent, cam Camera
 			continue
 		}
 
-		if ev.EventType == "lower3rd" {
-			handleLower3rdEvent(e, frameNum, ev, buf, cam)
+		if ev.EventType == "banner" {
+			handleBannerEvent(e, frameNum, ev, buf, cam)
 			continue
 		}
 
@@ -585,12 +585,12 @@ func handleSlideEvent(e *Engine, frameNum int, ev model.FrameEvent, buf *image.R
 var slideEntryAnimFrames = int(0.4 * 30) // 12 frames
 var slideExitAnimFrames = int(0.4 * 30)  // 12 frames
 
-func handleLower3rdEvent(e *Engine, frameNum int, ev model.FrameEvent, buf *image.RGBA, cam CameraState) {
+func handleBannerEvent(e *Engine, frameNum int, ev model.FrameEvent, buf *image.RGBA, cam CameraState) {
 	var title string
 	var subtitle string
 	var colorHex string
 
-	rest := strings.TrimPrefix(ev.TargetImage, "__lower3rd_")
+	rest := strings.TrimPrefix(ev.TargetImage, "__banner_")
 	parts := strings.SplitN(rest, "|", 3)
 	title = parts[0]
 	if len(parts) > 1 {
@@ -600,15 +600,15 @@ func handleLower3rdEvent(e *Engine, frameNum int, ev model.FrameEvent, buf *imag
 		colorHex = parts[2]
 	}
 
-	lower3rdW := e.Width
-	lower3rdH := int(float64(e.Height) * 0.14)
-	if lower3rdH < 80 {
-		lower3rdH = 80
+	bannerW := e.Width
+	bannerH := int(float64(e.Height) * 0.14)
+	if bannerH < 80 {
+		bannerH = 80
 	}
-	if lower3rdH > 160 {
-		lower3rdH = 160
+	if bannerH > 160 {
+		bannerH = 160
 	}
-	targetY := e.Height - lower3rdH - int(float64(e.Height)*0.04)
+	targetY := e.Height - bannerH - int(float64(e.Height)*0.04)
 
 	totalAnimFrames := slideEntryAnimFrames + slideExitAnimFrames
 	frameInEvent := frameNum - ev.StartFrame
@@ -620,7 +620,7 @@ func handleLower3rdEvent(e *Engine, frameNum int, ev model.FrameEvent, buf *imag
 	if frameInEvent <= totalAnimFrames && durationFrames > 0 {
 		if frameInEvent < slideEntryAnimFrames {
 			ep := EaseOutCubic(float64(frameInEvent) / float64(slideEntryAnimFrames))
-			sourceY := e.Height - lower3rdH - int(float64(e.Height)*0.04)
+			sourceY := e.Height - bannerH - int(float64(e.Height)*0.04)
 			localY = int(float64(targetY-sourceY)*(1.0-ep)) + sourceY
 			alpha = ep
 		} else if frameInEvent > durationFrames-slideExitAnimFrames {
@@ -637,12 +637,12 @@ func handleLower3rdEvent(e *Engine, frameNum int, ev model.FrameEvent, buf *imag
 		alpha = 1.0
 	}
 
-	panelKey := fmt.Sprintf("__lower3rd_%s_%s_%s", title, subtitle, colorHex)
+	panelKey := fmt.Sprintf("__banner_%s_%s_%s", title, subtitle, colorHex)
 	e.AssetMu.RLock()
 	panel, ok := e.Assets[panelKey]
 	e.AssetMu.RUnlock()
 	if !ok {
-		panel = RenderLower3rdPanel(e.Width, e.Height, title, subtitle, colorHex)
+		panel = RenderBannerPanel(e.Width, e.Height, title, subtitle, colorHex)
 		e.AssetMu.Lock()
 		e.Assets[panelKey] = panel
 		e.AssetMu.Unlock()
@@ -653,8 +653,8 @@ func handleLower3rdEvent(e *Engine, frameNum int, ev model.FrameEvent, buf *imag
 		return
 	}
 
-	destRect := image.Rect(0, localY, lower3rdW, localY+lower3rdH)
-	srcRect := image.Rect(0, 0, lower3rdW, lower3rdH)
+	destRect := image.Rect(0, localY, bannerW, localY+bannerH)
+	srcRect := image.Rect(0, 0, bannerW, bannerH)
 	cropped := image.NewRGBA(srcRect)
 	copy(cropped.Pix, panelRGBA.Pix[0:len(cropped.Pix)])
 
