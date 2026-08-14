@@ -21,8 +21,7 @@ func NewEventLogger(path string) (*EventLogger, error) {
 		return nil, err
 	}
 	w := bufio.NewWriter(f)
-	_, _ = w.WriteString("# zen-board eventlog v1\n")
-	_, _ = w.WriteString("# dir\tframe\tts_sec\tevent_type\ttarget\tx,y\tzoom_focus\n")
+	_, _ = w.WriteString("# zen-board eventlog v2: action - start_sec - end_sec\n")
 	return &EventLogger{w: w, f: f}, nil
 }
 
@@ -33,10 +32,22 @@ func (l *EventLogger) LogTransition(dir string, frame int, ev model.FrameEvent, 
 	if l.broken.Load() {
 		return
 	}
-	tsSec := float64(frame) / float64(fps)
-	target := enrichTarget(ev)
-	_, err := fmt.Fprintf(l.w, "%s\t%d\t%.3f\t%s\t%s\t%d,%d\t%s\n",
-		dir, frame, tsSec, ev.EventType, target, ev.X, ev.Y, ev.ZoomFocus)
+	if dir != "EXIT" {
+		return
+	}
+	rate := fps
+	if rate <= 0 {
+		rate = 1
+	}
+	startFrame := ev.StartFrame
+	if startFrame < 0 {
+		startFrame = 0
+	}
+	if startFrame > frame {
+		startFrame = frame
+	}
+	_, err := fmt.Fprintf(l.w, "%s - %.3f - %.3f\n",
+		ev.EventType, float64(startFrame)/float64(rate), float64(frame)/float64(rate))
 	if err != nil {
 		l.broken.Store(true)
 		fmt.Fprintf(os.Stderr, "[eventlog] write error: %v; logging disabled\n", err)
@@ -57,29 +68,4 @@ func (l *EventLogger) Close() error {
 		}
 	}
 	return err
-}
-
-func enrichTarget(ev model.FrameEvent) string {
-	switch ev.EventType {
-	case "draw", "erase", "static", "move", "text", "gen":
-		return ev.TargetImage
-	case "slide":
-		return ev.TargetImage + "/" + ev.Transition
-	case "banner":
-		return ev.TargetImage
-	case "arrow", "arrow_static":
-		return ev.ArrowFrom + "→" + ev.ArrowTo
-	case "highlight":
-		return ev.TargetImage + "/" + ev.HighlightStyle
-	case "compare":
-		return ev.CompareLeft + "|" + ev.CompareRight
-	case "overlay":
-		return ev.TargetImage
-	case "transition":
-		return ev.TransitionType
-	case "counter":
-		return ev.CounterFormat
-	default:
-		return ev.TargetImage
-	}
 }

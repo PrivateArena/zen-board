@@ -93,7 +93,7 @@ func Run() error {
 	freezeFrames := fs.Int("freeze", conf.FreezeFrames, "Number of freeze frames at the end of the video")
 	fast := fs.Bool("fast", false, "Enable fast preview rendering mode (uses nearest-neighbor camera scale, ultrafast H.264 preset)")
 	ttsCacheDir := fs.String("tts-cache", conf.TTSCacheDir, "Directory to cache TTS audio/timings")
-	eventLogPath := fs.String("eventlog", "", "Path to write event transition log (TSV); empty = disabled")
+	eventLogPath := fs.String("eventlog", "", "Path to write event transition log; empty = disabled")
 
 	if err := fs.Parse(os.Args[1:]); err != nil {
 		return err
