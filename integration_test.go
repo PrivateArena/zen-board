@@ -6,6 +6,7 @@ import (
 	"image/png"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"zen-board/internal/testutil"
 )
@@ -134,6 +135,85 @@ func TestV3Features(t *testing.T) {
 		t.Fatalf("Run() failed for v3_test.zen: %v", err)
 	}
 
+	if _, err := os.Stat(outputPath); os.IsNotExist(err) {
+		t.Errorf("v3 output file %s was not created", outputPath)
+	}
+}
+
+func TestV3FeaturesEventLog(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping v3 eventlog integration test in short mode")
+	}
+
+	ts := testutil.NewMockTTSServer()
+	defer ts.Close()
+
+	tmpDir, err := os.MkdirTemp("", "zen-v3-eventlog-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	scriptPath := filepath.Join(tmpDir, "v3_test.zen")
+	inputPath := filepath.Join("examples", "v3_test.zen")
+	data, err := os.ReadFile(inputPath)
+	if err != nil {
+		t.Fatalf("reading examples/v3_test.zen: %v", err)
+	}
+	if err := os.WriteFile(scriptPath, data, 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	outputPath := filepath.Join(tmpDir, "output.mp4")
+	eventLogPath := filepath.Join(tmpDir, "ev.log")
+	assetsDir := filepath.Join(".", "assets")
+	handPath := filepath.Join(assetsDir, "hand.png")
+
+	oldArgs := os.Args
+	defer func() { os.Args = oldArgs }()
+
+	os.Args = []string{
+		"zen-board",
+		"-script", scriptPath,
+		"-o", outputPath,
+		"-tts", ts.URL,
+		"-assets", assetsDir,
+		"-hand", handPath,
+		"-fps", "10",
+		"-w", "320",
+		"-h", "180",
+		"-disable-transcript",
+		"-freeze", "15",
+		"-eventlog", eventLogPath,
+		"-tts-cache", filepath.Join(tmpDir, "tts-cache"),
+	}
+
+	err = Run()
+	if err != nil {
+		t.Fatalf("Run() failed for v3_test.zen: %v", err)
+	}
+
+	logData, err := os.ReadFile(eventLogPath)
+	if err != nil {
+		t.Fatalf("reading eventlog: %v", err)
+	}
+	logStr := string(logData)
+	if !strings.Contains(logStr, "# zen-board eventlog v2") {
+		t.Fatalf("eventlog header missing:\n%s", logStr)
+	}
+
+	// Non-visual actions previously absent from the eventlog must now appear.
+	for _, action := range []string{"chapter", "style", "clear", "erase_all"} {
+		if !strings.Contains(logStr, action) {
+			t.Errorf("eventlog missing %q action:\n%s", action, logStr)
+		}
+	}
+	// Visual actions must keep being logged (no regression).
+	for _, action := range []string{"slide", "arrow", "banner", "highlight", "compare", "transition", "overlay"} {
+		if !strings.Contains(logStr, action) {
+			t.Errorf("eventlog missing %q action (regression):\n%s", action, logStr)
+		}
+	}
 	if _, err := os.Stat(outputPath); os.IsNotExist(err) {
 		t.Errorf("v3 output file %s was not created", outputPath)
 	}

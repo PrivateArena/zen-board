@@ -199,6 +199,12 @@ func CompileTimeline(conf *model.Project, allWordTimings []model.WordTiming, pLi
 					Frame: startFrame,
 					Style: styleName,
 				})
+				// Inert marker so the eventlog records the style switch
+				timeline.Events = append(timeline.Events, model.FrameEvent{
+					StartFrame: startFrame,
+					EndFrame:   999999,
+					EventType:  "style",
+				})
 				continue
 			}
 
@@ -208,6 +214,12 @@ func CompileTimeline(conf *model.Project, allWordTimings []model.WordTiming, pLi
 				chapters = append(chapters, ChapterMarker{
 					StartTime: triggerTime,
 					Title:     title,
+				})
+				// Inert marker so the eventlog records the chapter boundary
+				timeline.Events = append(timeline.Events, model.FrameEvent{
+					StartFrame: startFrame,
+					EndFrame:   999999,
+					EventType:  "chapter",
 				})
 				continue
 			}
@@ -323,6 +335,12 @@ func CompileTimeline(conf *model.Project, allWordTimings []model.WordTiming, pLi
 				}
 				timeline.Events = activeEvents
 				gridIndex = 0
+				// Inert marker so the eventlog records the board wipe
+				timeline.Events = append(timeline.Events, model.FrameEvent{
+					StartFrame: startFrame,
+					EndFrame:   999999,
+					EventType:  "erase_all",
+				})
 				continue
 			}
 
@@ -519,6 +537,12 @@ func CompileTimeline(conf *model.Project, allWordTimings []model.WordTiming, pLi
 				}
 				timeline.Events = activeEvents
 				gridIndex = 0
+				// Inert marker so the eventlog records the board wipe
+				timeline.Events = append(timeline.Events, model.FrameEvent{
+					StartFrame: startFrame,
+					EndFrame:   999999,
+					EventType:  "clear",
+				})
 				continue
 			}
 
