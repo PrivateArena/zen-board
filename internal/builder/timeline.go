@@ -14,6 +14,7 @@ import (
 	"strconv"
 	"strings"
 	"zen-board/internal/assets"
+	"zen-board/internal/constant"
 	"zen-board/internal/model"
 	"zen-board/internal/render"
 	"zen-board/internal/svg"
@@ -103,8 +104,8 @@ func newTimelineCompiler(conf *model.Project, allWordTimings []model.WordTiming,
 			Duration:  exactDuration,
 		},
 		allWordTimings:   allWordTimings,
-		currentStyle:     "whiteboard",
-		currentZoomFocus: "reset",
+		currentStyle:     constant.STYLE_WHITEBOARD,
+		currentZoomFocus: constant.FOCUS_RESET,
 		marginX:          marginX,
 		marginY:          marginY,
 		colWidth:         (conf.Width - 2*marginX) / 3,
@@ -121,7 +122,7 @@ func (c *timelineCompiler) collectZoomIntervals(pLines []model.ProcessedLine) {
 	zoomTransFrames := int(1.0 * float64(c.conf.FPS))
 	for _, pl := range pLines {
 		for _, action := range pl.Actions {
-			if !strings.HasPrefix(action.Tag, "zoom:") {
+			if !strings.HasPrefix(action.Tag, constant.TAG_ZOOM) {
 				continue
 			}
 			zt := pl.StartTime
@@ -207,7 +208,7 @@ func (c *timelineCompiler) processAction(pl *model.ProcessedLine, action *model.
 	// the hand-draw animation never plays while the camera is still panning.
 	// zoom/style/erase/move events keep their raw startFrame.
 	startFrame := rawStartFrame
-	if !isSpecialAction(action.Tag) || strings.HasPrefix(actionTag, "gen:") || strings.HasPrefix(actionTag, "text:") {
+	if !isSpecialAction(action.Tag) || strings.HasPrefix(actionTag, constant.TAG_GEN) || strings.HasPrefix(actionTag, constant.TAG_TEXT) {
 		startFrame = c.adjustForZoom(rawStartFrame)
 	}
 
@@ -238,7 +239,7 @@ func (c *timelineCompiler) validateAssets() error {
 	var missingAssets []string
 	seenAssets := make(map[string]bool)
 	for _, ev := range c.timeline.Events {
-		if ev.EventType == "compare" {
+		if ev.EventType == constant.EVENT_COMPARE {
 			for _, imgID := range []string{ev.CompareLeft, ev.CompareRight} {
 				if imgID == "" || seenAssets[imgID] {
 					continue
@@ -256,10 +257,10 @@ func (c *timelineCompiler) validateAssets() error {
 			}
 			continue
 		}
-		if ev.TargetImage == "" || ev.TargetImage == "clear" || strings.HasPrefix(ev.TargetImage, "__text_") || strings.HasPrefix(ev.TargetImage, "__gen_") || strings.HasPrefix(ev.TargetImage, "__banner_") {
+		if ev.TargetImage == "" || ev.TargetImage == constant.TAG_CLEAR || strings.HasPrefix(ev.TargetImage, "__text_") || strings.HasPrefix(ev.TargetImage, "__gen_") || strings.HasPrefix(ev.TargetImage, "__banner_") {
 			continue
 		}
-		if ev.EventType == "arrow" || ev.EventType == "arrow_static" || ev.EventType == "highlight" || ev.EventType == "counter" || ev.EventType == "transition" {
+		if ev.EventType == constant.EVENT_ARROW || ev.EventType == constant.EVENT_ARROW_STATIC || ev.EventType == constant.EVENT_HIGHLIGHT || ev.EventType == constant.EVENT_COUNTER || ev.EventType == constant.EVENT_TRANSITION {
 			continue
 		}
 		if seenAssets[ev.TargetImage] {
@@ -287,7 +288,7 @@ func (c *timelineCompiler) validateAssets() error {
 	}
 
 	for _, ev := range c.timeline.Events {
-		if ev.EventType == "erase" {
+		if ev.EventType == constant.EVENT_ERASE {
 			if _, hasAsset := assetMap[ev.TargetImage]; !hasAsset {
 				assetPath := filepath.Join(c.conf.AssetsDir, ev.TargetImage+".png")
 				if _, err := os.Stat(assetPath); os.IsNotExist(err) {
@@ -389,7 +390,7 @@ func PrepareAssets(conf *model.Project, engine *render.Engine, timeline *model.T
 	svgCache := make(map[string]*image.RGBA)
 
 	for _, ev := range timeline.Events {
-		if ev.EventType == "compare" {
+		if ev.EventType == constant.EVENT_COMPARE {
 			for _, imgID := range []string{ev.CompareLeft, ev.CompareRight} {
 				if imgID == "" || seenAssets[imgID] {
 					continue
@@ -411,10 +412,10 @@ func PrepareAssets(conf *model.Project, engine *render.Engine, timeline *model.T
 			}
 			continue
 		}
-		if ev.TargetImage == "" || ev.TargetImage == "clear" || strings.HasPrefix(ev.TargetImage, "__text_") || strings.HasPrefix(ev.TargetImage, "__gen_") || strings.HasPrefix(ev.TargetImage, "__banner_") {
+		if ev.TargetImage == "" || ev.TargetImage == constant.TAG_CLEAR || strings.HasPrefix(ev.TargetImage, "__text_") || strings.HasPrefix(ev.TargetImage, "__gen_") || strings.HasPrefix(ev.TargetImage, "__banner_") {
 			continue
 		}
-		if ev.EventType == "arrow" || ev.EventType == "arrow_static" || ev.EventType == "highlight" || ev.EventType == "counter" || ev.EventType == "transition" {
+		if ev.EventType == constant.EVENT_ARROW || ev.EventType == constant.EVENT_ARROW_STATIC || ev.EventType == constant.EVENT_HIGHLIGHT || ev.EventType == constant.EVENT_COUNTER || ev.EventType == constant.EVENT_TRANSITION {
 			continue
 		}
 		if seenAssets[ev.TargetImage] {
@@ -441,10 +442,10 @@ func PrepareAssets(conf *model.Project, engine *render.Engine, timeline *model.T
 	// Process SVG assets (both variant and non-variant)
 	for i := range timeline.Events {
 		ev := &timeline.Events[i]
-		if ev.TargetImage == "" || ev.TargetImage == "clear" || strings.HasPrefix(ev.TargetImage, "__") {
+		if ev.TargetImage == "" || ev.TargetImage == constant.TAG_CLEAR || strings.HasPrefix(ev.TargetImage, "__") {
 			continue
 		}
-		if ev.EventType == "arrow" || ev.EventType == "arrow_static" || ev.EventType == "highlight" || ev.EventType == "counter" || ev.EventType == "transition" {
+		if ev.EventType == constant.EVENT_ARROW || ev.EventType == constant.EVENT_ARROW_STATIC || ev.EventType == constant.EVENT_HIGHLIGHT || ev.EventType == constant.EVENT_COUNTER || ev.EventType == constant.EVENT_TRANSITION {
 			continue
 		}
 
@@ -506,7 +507,7 @@ func PrepareAssets(conf *model.Project, engine *render.Engine, timeline *model.T
 	// Render and load all text assets
 	for _, job := range textJobs {
 		textColor := color.RGBA{R: 0, G: 0, B: 0, A: 255}
-		if job.Style == "blackboard" {
+		if job.Style == constant.STYLE_BLACKBOARD {
 			textColor = color.RGBA{R: 255, G: 255, B: 255, A: 255}
 		}
 		img, err := render.RenderText(job.Content, job.FontFamily, job.FontSize, job.IsBold, textColor)

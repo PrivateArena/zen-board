@@ -4,6 +4,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"zen-board/internal/constant"
 	"zen-board/internal/model"
 )
 
@@ -183,25 +184,25 @@ func extractActions(line string) (string, []model.DrawAction) {
 	}
 
 	extractDrawTag()
-	extractStandardTag(textRegex, "text:")
-	extractStandardTag(eraseRegex, "erase:")
-	extractStandardTag(moveRegex, "move:")
-	extractStandardTag(genRegex, "gen:")
+	extractStandardTag(textRegex, constant.TAG_TEXT)
+	extractStandardTag(eraseRegex, constant.TAG_ERASE)
+	extractStandardTag(moveRegex, constant.TAG_MOVE)
+	extractStandardTag(genRegex, constant.TAG_GEN)
 
-	extractComplexTag(slideRegex, "slide:")
-	extractComplexTag(bannerRegex, "banner:")
-	extractComplexTag(arrowRegex, "arrow:")
-	extractComplexTag(highlightRegex, "highlight:")
-	extractComplexTag(compareRegex, "compare:")
-	extractComplexTag(transitionRegex, "transition:")
-	extractComplexTag(overlayRegex, "overlay:")
-	extractComplexTag(counterRegex, "counter:")
+	extractComplexTag(slideRegex, constant.TAG_SLIDE)
+	extractComplexTag(bannerRegex, constant.TAG_BANNER)
+	extractComplexTag(arrowRegex, constant.TAG_ARROW)
+	extractComplexTag(highlightRegex, constant.TAG_HIGHLIGHT)
+	extractComplexTag(compareRegex, constant.TAG_COMPARE)
+	extractComplexTag(transitionRegex, constant.TAG_TRANSITION)
+	extractComplexTag(overlayRegex, constant.TAG_OVERLAY)
+	extractComplexTag(counterRegex, constant.TAG_COUNTER)
 
-	extractSimpleTag(zoomRegex, "zoom:")
-	extractSimpleTag(styleRegex, "style:")
-	extractSimpleTag(chapterRegex, "chapter:")
-	extractSimpleTag(sfxRegex, "sfx:")
-	extractSimpleTag(subtitleRegex, "subtitle:")
+	extractSimpleTag(zoomRegex, constant.TAG_ZOOM)
+	extractSimpleTag(styleRegex, constant.TAG_STYLE)
+	extractSimpleTag(chapterRegex, constant.TAG_CHAPTER)
+	extractSimpleTag(sfxRegex, constant.TAG_SFX)
+	extractSimpleTag(subtitleRegex, constant.TAG_SUBTITLE)
 
 	waitMatches := waitRegex.FindAllStringSubmatchIndex(line, -1)
 	for _, m := range waitMatches {
@@ -211,7 +212,7 @@ func extractActions(line string) (string, []model.DrawAction) {
 
 	clearMatches := clearRegex.FindAllStringSubmatchIndex(line, -1)
 	for _, m := range clearMatches {
-		tags = append(tags, tagInfo{start: m[0], end: m[1], tag: "clear"})
+		tags = append(tags, tagInfo{start: m[0], end: m[1], tag: constant.TAG_CLEAR})
 	}
 
 	for i := 0; i < len(tags); i++ {
@@ -230,7 +231,7 @@ func extractActions(line string) (string, []model.DrawAction) {
 
 		if t.isWait {
 			actions = append(actions, model.DrawAction{
-				Tag:              "WAIT:" + strconv.FormatFloat(t.waitVal, 'f', -1, 64),
+				Tag:              constant.TAG_WAIT + strconv.FormatFloat(t.waitVal, 'f', -1, 64),
 				WordIndex:        wordCount,
 				TriggerAfterWord: wordCount > 0,
 			})

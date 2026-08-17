@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"zen-board/internal/constant"
 	"zen-board/internal/ffmpeg"
 	"zen-board/internal/model"
 	"zen-board/internal/render"
@@ -30,7 +31,7 @@ func RenderTimeline(conf *model.Project, timeline *model.Timeline, engine *rende
 	var zoomKeyframes []zoomKeyframe
 	for _, pl := range pLines {
 		for _, action := range pl.Actions {
-			if strings.HasPrefix(action.Tag, "zoom:") {
+			if strings.HasPrefix(action.Tag, constant.TAG_ZOOM) {
 				triggerTime := pl.StartTime
 				if action.WordIndex > 0 {
 					triggerWordIdx := pl.WordOffset + action.WordIndex - 1
@@ -39,7 +40,7 @@ func RenderTimeline(conf *model.Project, timeline *model.Timeline, engine *rende
 					}
 				}
 				frame := int(triggerTime * float64(conf.FPS))
-				target := strings.TrimPrefix(action.Tag, "zoom:")
+				target := strings.TrimPrefix(action.Tag, constant.TAG_ZOOM)
 				zoomKeyframes = append(zoomKeyframes, zoomKeyframe{
 					frame:  frame,
 					target: target,
@@ -53,7 +54,7 @@ func RenderTimeline(conf *model.Project, timeline *model.Timeline, engine *rende
 	})
 
 	cameraStates := make([]render.CameraState, totalFrames)
-	defaultCam := render.GetPresetViewport("reset", conf.Width, conf.Height)
+	defaultCam := render.GetPresetViewport(constant.FOCUS_RESET, conf.Width, conf.Height)
 
 	if !cameraEnabled {
 		for f := 0; f < totalFrames; f++ {
@@ -87,7 +88,7 @@ func RenderTimeline(conf *model.Project, timeline *model.Timeline, engine *rende
 	}
 
 	styleStates := make([]string, totalFrames)
-	currentStyleState := "whiteboard"
+	currentStyleState := constant.STYLE_WHITEBOARD
 	sort.Slice(styleKeyframes, func(i, j int) bool {
 		return styleKeyframes[i].Frame < styleKeyframes[j].Frame
 	})

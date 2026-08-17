@@ -4,6 +4,7 @@ import (
 	"image"
 	"image/color"
 	"math"
+	"zen-board/internal/constant"
 )
 
 type MaskConfig struct {
@@ -27,7 +28,7 @@ func GenerateMask(width, height int, progress float64, style string, config Mask
 	fW := float64(width)
 	fH := float64(height)
 
-	if style == "ltr" {
+	if style == constant.MASK_LTR {
 		featherPx := config.Feather * fW
 		if featherPx < 1.0 {
 			featherPx = 1.0
@@ -49,7 +50,7 @@ func GenerateMask(width, height int, progress float64, style string, config Mask
 				}
 			}
 		}
-	} else if style == "diagonal" {
+	} else if style == constant.MASK_DIAGONAL {
 		// Diagonal TL→BR: pixel revealed when d = x/W + y/H < frontier (d ranges 0..2).
 		// Sine wave runs along the perpendicular axis (x-y) for a hand-drawn edge.
 		featherD := config.Feather * 2.0
@@ -107,7 +108,7 @@ func GetFrontierPoint(width, height int, progress float64, style string, config 
 	fW := float64(width)
 	fH := float64(height)
 
-	if style == "ltr" {
+	if style == constant.MASK_LTR {
 		// Hand tracks the vertical-center of the LTR sweep band with a gentle vertical oscillation.
 		bandX := progress*1.2*fW - 0.1*fW
 		// Gentle vertical sweep: 1 cycle across progress
@@ -117,7 +118,7 @@ func GetFrontierPoint(width, height int, progress float64, style string, config 
 		wobbleX := bandX + config.Amplitude*fW*math.Sin(2*math.Pi*float64(y)/config.Wavelength)
 		x = int(math.Max(0, math.Min(fW-1, wobbleX)))
 
-	} else if style == "diagonal" {
+	} else if style == constant.MASK_DIAGONAL {
 		// Parameterize the diagonal frontier line segment inside the image boundaries.
 		// For a given progress, the line is: x/W + y/H = 2 * progress
 		// Let p1 be the intersection with the left or bottom edge, and p2 with the top or right edge.

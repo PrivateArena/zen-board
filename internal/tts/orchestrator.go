@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"zen-board/internal/constant"
 	"zen-board/internal/model"
 )
 
@@ -91,9 +92,9 @@ func OrchestrateTTS(client *TTSClient, lines []model.ScriptLine, speed float64, 
 		if line.Text == "" {
 			waitDuration := 0.0
 			for _, action := range line.Actions {
-				if strings.HasPrefix(action.Tag, "WAIT:") {
+				if strings.HasPrefix(action.Tag, constant.TAG_WAIT) {
 					var waitVal float64
-					fmt.Sscanf(strings.TrimPrefix(action.Tag, "WAIT:"), "%f", &waitVal)
+					fmt.Sscanf(strings.TrimPrefix(action.Tag, constant.TAG_WAIT), "%f", &waitVal)
 					waitDuration += waitVal
 				}
 			}

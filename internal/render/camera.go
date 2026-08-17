@@ -5,6 +5,7 @@ import (
 	"image/color"
 	"math"
 
+	"zen-board/internal/constant"
 	"zen-board/internal/model"
 )
 
@@ -18,7 +19,7 @@ type CameraState struct {
 func GetPresetViewport(preset string, canvasW, canvasH int) CameraState {
 	pName := preset
 	if pName == "" {
-		pName = "reset"
+		pName = constant.FOCUS_RESET
 	}
 	x, y, w, h := model.GetPresetLayout(preset, canvasW, canvasH)
 	return CameraState{

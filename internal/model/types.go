@@ -1,5 +1,7 @@
 package model
 
+import "zen-board/internal/constant"
+
 type Project struct {
 	ScriptPath        string  `json:"script_path"`
 	AssetsDir         string  `json:"assets_dir"`
@@ -28,7 +30,7 @@ func NewDefaultProject() *Project {
 		FPS:          30,
 		Width:        1920,
 		Height:       1080,
-		Cursor:       "hand",
+		Cursor:       constant.CURSOR_HAND,
 		TTSAddr:      "http://localhost:5000",
 		Speed:        1.0,
 		HandTipX:     30,

@@ -14,6 +14,7 @@ import (
 	_ "image/jpeg"
 	_ "image/png"
 
+	"zen-board/internal/constant"
 	"zen-board/internal/model"
 
 	xdraw "golang.org/x/image/draw"
@@ -158,20 +159,20 @@ func (e *Engine) RenderFrame(frameNum int, events []model.FrameEvent, cam Camera
 
 		evFocus := ev.ZoomFocus
 		if evFocus == "" {
-			evFocus = "reset"
+			evFocus = constant.FOCUS_RESET
 		}
 
 		isVisibleIn := func(focus, preset string) bool {
-			return focus == preset || preset == "reset"
+			return focus == preset || preset == constant.FOCUS_RESET
 		}
 
 		srcPreset := cam.SourcePreset
 		if srcPreset == "" {
-			srcPreset = "reset"
+			srcPreset = constant.FOCUS_RESET
 		}
 		tgtPreset := cam.TargetPreset
 		if tgtPreset == "" {
-			tgtPreset = "reset"
+			tgtPreset = constant.FOCUS_RESET
 		}
 
 		var visibility float64 = 1.0
@@ -192,53 +193,53 @@ func (e *Engine) RenderFrame(frameNum int, events []model.FrameEvent, cam Camera
 			continue
 		}
 
-		if ev.EventType == "slide" {
+		if ev.EventType == constant.EVENT_SLIDE {
 			handleSlideEvent(e, frameNum, ev, buf, visibility, slideAnimFrames, cam)
 			continue
 		}
 
-		if ev.EventType == "banner" {
+		if ev.EventType == constant.EVENT_BANNER {
 			handleBannerEvent(e, frameNum, ev, buf, cam)
 			continue
 		}
 
-		if ev.EventType == "arrow" || ev.EventType == "arrow_static" {
+		if ev.EventType == constant.EVENT_ARROW || ev.EventType == constant.EVENT_ARROW_STATIC {
 			handX, handY, active := handleArrowEvent(e, frameNum, ev, buf, visibility)
-			if active && ev.EventType == "arrow" {
+			if active && ev.EventType == constant.EVENT_ARROW {
 				activeHandX = handX
 				activeHandY = handY
 				handVisible = true
 				activeHandCursor = ResolveStr(ev.Cursor, e.DefaultCursor)
-				if style == "blackboard" || style == "glassboard" {
-					activeHandStyle = "chalk"
+				if style == constant.STYLE_BLACKBOARD || style == constant.STYLE_GLASSBOARD {
+					activeHandStyle = constant.HAND_CHALK
 				} else {
-					activeHandStyle = "marker"
+					activeHandStyle = constant.HAND_MARKER
 				}
 			}
 			continue
 		}
 
-		if ev.EventType == "highlight" {
+		if ev.EventType == constant.EVENT_HIGHLIGHT {
 			handleHighlightEvent(e, frameNum, ev, buf, visibility)
 			continue
 		}
 
-		if ev.EventType == "compare" {
+		if ev.EventType == constant.EVENT_COMPARE {
 			handleCompareEvent(e, frameNum, ev, buf, visibility, style)
 			continue
 		}
 
-		if ev.EventType == "overlay" {
+		if ev.EventType == constant.EVENT_OVERLAY {
 			handleOverlayEvent(e, frameNum, ev, buf, visibility)
 			continue
 		}
 
-		if ev.EventType == "transition" {
+		if ev.EventType == constant.EVENT_TRANSITION {
 			handleTransitionEvent(e, frameNum, ev, buf, visibility)
 			continue
 		}
 
-		if ev.EventType == "counter" {
+		if ev.EventType == constant.EVENT_COUNTER {
 			handleCounterEvent(e, frameNum, ev, buf, visibility, style)
 			continue
 		}
@@ -250,7 +251,7 @@ func (e *Engine) RenderFrame(frameNum int, events []model.FrameEvent, cam Camera
 			continue
 		}
 
-		if style == "blackboard" && !strings.HasPrefix(ev.TargetImage, "__text_") {
+		if style == constant.STYLE_BLACKBOARD && !strings.HasPrefix(ev.TargetImage, "__text_") {
 			key := ev.TargetImage + "_inverted"
 			e.AssetMu.RLock()
 			invImg, ok := e.Assets[key]
@@ -321,14 +322,14 @@ func (e *Engine) RenderFrame(frameNum int, events []model.FrameEvent, cam Camera
 
 		destRect := image.Rect(renderX, renderY, renderX+img.Bounds().Dx(), renderY+img.Bounds().Dy())
 
-		if ev.EventType == "static" {
+		if ev.EventType == constant.EVENT_STATIC {
 			tDrawStart := time.Now()
 			DrawWithMask(buf, destRect, img, visibility)
 			localDrawMaskTime += time.Since(tDrawStart)
 			continue
 		}
 
-		if ev.EventType == "move" {
+		if ev.EventType == constant.EVENT_MOVE {
 			easedT := EaseInOut(CalcProgress(frameNum, ev.StartFrame, ev.EndFrame))
 			curX := ev.X + int(float64(ev.DestX-ev.X)*easedT)
 			curY := ev.Y + int(float64(ev.DestY-ev.Y)*easedT)
@@ -351,7 +352,7 @@ func (e *Engine) RenderFrame(frameNum int, events []model.FrameEvent, cam Camera
 			continue
 		}
 
-		if ev.EventType == "erase" {
+		if ev.EventType == constant.EVENT_ERASE {
 			if easedProgress >= 1.0 {
 				continue
 			}
@@ -372,7 +373,7 @@ func (e *Engine) RenderFrame(frameNum int, events []model.FrameEvent, cam Camera
 			activeHandY = renderY + fy
 			activeHandAngle = 0
 			handVisible = true
-			activeHandStyle = ResolveStr(ev.HandStyle, "eraser")
+			activeHandStyle = ResolveStr(ev.HandStyle, constant.HAND_ERASER)
 			activeHandCursor = ResolveStr(ev.Cursor, e.DefaultCursor)
 			continue
 		}
@@ -409,9 +410,9 @@ func (e *Engine) RenderFrame(frameNum int, events []model.FrameEvent, cam Camera
 			activeHandX = renderX + fx
 			activeHandY = renderY + fy
 			activeHandAngle = 0
-			if ev.MaskStyle == "diagonal" {
+			if ev.MaskStyle == constant.MASK_DIAGONAL {
 				activeHandAngle = 15
-			} else if ev.MaskStyle == "ltr" {
+			} else if ev.MaskStyle == constant.MASK_LTR {
 				activeHandAngle = -10
 			}
 			handVisible = true
@@ -470,7 +471,7 @@ func handleSlideEvent(e *Engine, frameNum int, ev model.FrameEvent, buf *image.R
 
 	renderW, renderH, renderX, renderY := ev.Width, ev.Height, ev.X, ev.Y
 	if ev.FitMode == "" {
-		ev.FitMode = "fit"
+		ev.FitMode = constant.FIT_FIT
 	}
 
 	rawW, rawH := img.Bounds().Dx(), img.Bounds().Dy()
@@ -532,14 +533,14 @@ func handleSlideEvent(e *Engine, frameNum int, ev model.FrameEvent, buf *image.R
 	drawH := renderH
 	alpha := visibility
 
-	transition := ResolveStr(ev.Transition, "none")
+	transition := ResolveStr(ev.Transition, constant.TRANSITION_NONE)
 
 	animWindow := animFrames
 	if animWindow <= 0 {
 		animWindow = 1
 	}
 
-	if progress < float64(animWindow)/float64(ev.EndFrame-ev.StartFrame+1) && transition != "none" {
+	if progress < float64(animWindow)/float64(ev.EndFrame-ev.StartFrame+1) && transition != constant.TRANSITION_NONE {
 		frameProgress := progress * float64(ev.EndFrame-ev.StartFrame+1) / float64(animWindow)
 		if frameProgress > 1.0 {
 			frameProgress = 1.0

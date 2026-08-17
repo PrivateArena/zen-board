@@ -3,6 +3,7 @@ package script
 import (
 	"sort"
 	"strings"
+	"zen-board/internal/constant"
 	"zen-board/internal/model"
 )
 
@@ -21,7 +22,7 @@ func SplitInlineWaits(lines []model.ScriptLine) []model.ScriptLine {
 		// Find if there are any WAIT actions
 		var waitActions []model.DrawAction
 		for _, act := range line.Actions {
-			if strings.HasPrefix(act.Tag, "WAIT:") {
+			if strings.HasPrefix(act.Tag, constant.TAG_WAIT) {
 				waitActions = append(waitActions, act)
 			}
 		}
@@ -53,7 +54,7 @@ func SplitInlineWaits(lines []model.ScriptLine) []model.ScriptLine {
 				// Collect actions that fall in this range
 				var partActions []model.DrawAction
 				for _, act := range line.Actions {
-					if !strings.HasPrefix(act.Tag, "WAIT:") {
+					if !strings.HasPrefix(act.Tag, constant.TAG_WAIT) {
 						isMatch := false
 						// Note: WordIndex == 0 means triggering at line start, before any word.
 						// The >=0 vs >lastWordIdx asymmetry ensures that any action exactly at the
@@ -97,7 +98,7 @@ func SplitInlineWaits(lines []model.ScriptLine) []model.ScriptLine {
 
 			var partActions []model.DrawAction
 			for _, act := range line.Actions {
-				if !strings.HasPrefix(act.Tag, "WAIT:") {
+				if !strings.HasPrefix(act.Tag, constant.TAG_WAIT) {
 					isMatch := false
 					if lastWordIdx == 0 {
 						isMatch = (act.WordIndex >= 0)

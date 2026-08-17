@@ -6,6 +6,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"zen-board/internal/constant"
 
 	_ "image/jpeg"
 	_ "image/png"
@@ -14,11 +15,11 @@ import (
 // styleAngle maps draw style → pre-baked rotation in degrees.
 // Positive = clockwise. Chosen to match natural pen grip per stroke direction.
 var styleAngle = map[string]int{
-	"default": 0,
-	"pencil":  0,
-	"chalk":   5,
-	"marker":  -10,
-	"eraser":  0,
+	"default":            0,
+	constant.HAND_PENCIL: 0,
+	constant.HAND_CHALK:  5,
+	constant.HAND_MARKER: -10,
+	constant.HAND_ERASER: 0,
 }
 
 // HandRenderer holds the sprite set and a rotation cache keyed by (style, angle).
@@ -50,7 +51,7 @@ func NewHandRenderer(path string, origTipX, origTipY int) (*HandRenderer, error)
 	}
 
 	dir := filepath.Dir(path)
-	for _, v := range []string{"pencil", "chalk", "eraser", "marker"} {
+	for _, v := range []string{constant.HAND_PENCIL, constant.HAND_CHALK, constant.HAND_ERASER, constant.HAND_MARKER} {
 		vPath := filepath.Join(dir, "hand_"+v+".png")
 		if vf, err := os.Open(vPath); err == nil {
 			if vImg, _, err := image.Decode(vf); err == nil {
@@ -143,7 +144,7 @@ func (h *HandRenderer) Draw(dst draw.Image, x, y int, frame int, style string, a
 	}
 
 	tipX, tipY := h.TipX, h.TipY
-	if style == "eraser" {
+	if style == constant.HAND_ERASER {
 		tipX = sprite.Bounds().Dx() / 2
 		tipY = sprite.Bounds().Dy() / 2
 	} else {

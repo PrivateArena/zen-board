@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 
+	"zen-board/internal/constant"
 	"zen-board/internal/model"
 )
 
@@ -28,7 +29,7 @@ type actionContext struct {
 // reserved command prefixes. Special actions bypass the generic
 // "<asset>:<preset>:<duration>" tag parsing performed for draw actions.
 func isSpecialAction(tag string) bool {
-	specialPrefixes := []string{"WAIT:", "zoom:", "style:", "chapter:", "sfx:", "subtitle:", "text:", "erase:", "move:", "gen:", "slide:", "banner:", "arrow:", "highlight:", "compare:", "transition:", "overlay:", "counter:"}
+	specialPrefixes := []string{constant.TAG_WAIT, constant.TAG_ZOOM, constant.TAG_STYLE, constant.TAG_CHAPTER, constant.TAG_SFX, constant.TAG_SUBTITLE, constant.TAG_TEXT, constant.TAG_ERASE, constant.TAG_MOVE, constant.TAG_GEN, constant.TAG_SLIDE, constant.TAG_BANNER, constant.TAG_ARROW, constant.TAG_HIGHLIGHT, constant.TAG_COMPARE, constant.TAG_TRANSITION, constant.TAG_OVERLAY, constant.TAG_COUNTER}
 	for _, prefix := range specialPrefixes {
 		if strings.HasPrefix(tag, prefix) {
 			return true
@@ -43,45 +44,45 @@ func isSpecialAction(tag string) bool {
 func (c *timelineCompiler) dispatch(ctx *actionContext) {
 	tag := ctx.action.Tag
 	switch {
-	case strings.HasPrefix(tag, "WAIT:"):
+	case strings.HasPrefix(tag, constant.TAG_WAIT):
 		// compile-time-only directive; nothing is emitted to the timeline
-	case strings.HasPrefix(tag, "zoom:"):
+	case strings.HasPrefix(tag, constant.TAG_ZOOM):
 		c.handleZoom(ctx)
-	case strings.HasPrefix(tag, "style:"):
+	case strings.HasPrefix(tag, constant.TAG_STYLE):
 		c.handleStyle(ctx)
-	case strings.HasPrefix(tag, "chapter:"):
+	case strings.HasPrefix(tag, constant.TAG_CHAPTER):
 		c.handleChapter(ctx)
-	case strings.HasPrefix(tag, "subtitle:"):
+	case strings.HasPrefix(tag, constant.TAG_SUBTITLE):
 		c.handleSubtitle(ctx)
-	case strings.HasPrefix(tag, "sfx:"):
+	case strings.HasPrefix(tag, constant.TAG_SFX):
 		// compile-time-only directive; nothing is emitted to the timeline
-	case strings.HasPrefix(tag, "text:"):
+	case strings.HasPrefix(tag, constant.TAG_TEXT):
 		c.handleText(ctx)
-	case tag == "erase:*":
+	case tag == constant.TAG_ERASE_ALL:
 		c.handleEraseAll(ctx)
-	case strings.HasPrefix(tag, "erase:"):
+	case strings.HasPrefix(tag, constant.TAG_ERASE):
 		c.handleErase(ctx)
-	case strings.HasPrefix(tag, "move:"):
+	case strings.HasPrefix(tag, constant.TAG_MOVE):
 		c.handleMove(ctx)
-	case strings.HasPrefix(tag, "gen:"):
+	case strings.HasPrefix(tag, constant.TAG_GEN):
 		c.handleGen(ctx)
-	case tag == "clear":
+	case tag == constant.TAG_CLEAR:
 		c.handleClear(ctx)
-	case strings.HasPrefix(tag, "slide:"):
+	case strings.HasPrefix(tag, constant.TAG_SLIDE):
 		c.handleSlide(ctx)
-	case strings.HasPrefix(tag, "banner:"):
+	case strings.HasPrefix(tag, constant.TAG_BANNER):
 		c.handleBanner(ctx)
-	case strings.HasPrefix(tag, "arrow:"):
+	case strings.HasPrefix(tag, constant.TAG_ARROW):
 		c.handleArrow(ctx)
-	case strings.HasPrefix(tag, "highlight:"):
+	case strings.HasPrefix(tag, constant.TAG_HIGHLIGHT):
 		c.handleHighlight(ctx)
-	case strings.HasPrefix(tag, "compare:"):
+	case strings.HasPrefix(tag, constant.TAG_COMPARE):
 		c.handleCompare(ctx)
-	case strings.HasPrefix(tag, "overlay:"):
+	case strings.HasPrefix(tag, constant.TAG_OVERLAY):
 		c.handleOverlay(ctx)
-	case strings.HasPrefix(tag, "transition:"):
+	case strings.HasPrefix(tag, constant.TAG_TRANSITION):
 		c.handleTransition(ctx)
-	case strings.HasPrefix(tag, "counter:"):
+	case strings.HasPrefix(tag, constant.TAG_COUNTER):
 		c.handleCounter(ctx)
 	default:
 		c.handleDraw(ctx)
@@ -89,11 +90,11 @@ func (c *timelineCompiler) dispatch(ctx *actionContext) {
 }
 
 func (c *timelineCompiler) handleZoom(ctx *actionContext) {
-	c.currentZoomFocus = strings.TrimPrefix(ctx.action.Tag, "zoom:")
+	c.currentZoomFocus = strings.TrimPrefix(ctx.action.Tag, constant.TAG_ZOOM)
 }
 
 func (c *timelineCompiler) handleStyle(ctx *actionContext) {
-	styleName := strings.TrimPrefix(ctx.action.Tag, "style:")
+	styleName := strings.TrimPrefix(ctx.action.Tag, constant.TAG_STYLE)
 	c.currentStyle = styleName
 	c.styleKeyframes = append(c.styleKeyframes, StyleKeyframe{
 		Frame: ctx.startFrame,
@@ -102,13 +103,13 @@ func (c *timelineCompiler) handleStyle(ctx *actionContext) {
 	// Inert marker so the eventlog records the style switch
 	c.timeline.Events = append(c.timeline.Events, model.FrameEvent{
 		StartFrame: ctx.startFrame,
-		EndFrame:   999999,
-		EventType:  "style",
+		EndFrame:   constant.FRAME_FOREVER,
+		EventType:  constant.EVENT_STYLE,
 	})
 }
 
 func (c *timelineCompiler) handleChapter(ctx *actionContext) {
-	title := strings.TrimPrefix(ctx.action.Tag, "chapter:")
+	title := strings.TrimPrefix(ctx.action.Tag, constant.TAG_CHAPTER)
 	title = strings.Trim(title, "\"")
 	c.chapters = append(c.chapters, ChapterMarker{
 		StartTime: ctx.triggerTime,
@@ -117,13 +118,13 @@ func (c *timelineCompiler) handleChapter(ctx *actionContext) {
 	// Inert marker so the eventlog records the chapter boundary
 	c.timeline.Events = append(c.timeline.Events, model.FrameEvent{
 		StartFrame: ctx.startFrame,
-		EndFrame:   999999,
-		EventType:  "chapter",
+		EndFrame:   constant.FRAME_FOREVER,
+		EventType:  constant.EVENT_CHAPTER,
 	})
 }
 
 func (c *timelineCompiler) handleSubtitle(ctx *actionContext) {
-	state := strings.TrimPrefix(ctx.action.Tag, "subtitle:")
+	state := strings.TrimPrefix(ctx.action.Tag, constant.TAG_SUBTITLE)
 	c.subtitleEvents = append(c.subtitleEvents, model.SubtitleEvent{
 		Time:  ctx.triggerTime,
 		State: state,
@@ -131,7 +132,7 @@ func (c *timelineCompiler) handleSubtitle(ctx *actionContext) {
 }
 
 func (c *timelineCompiler) handleText(ctx *actionContext) {
-	rest := strings.TrimPrefix(ctx.action.Tag, "text:")
+	rest := strings.TrimPrefix(ctx.action.Tag, constant.TAG_TEXT)
 	firstQuote := strings.Index(rest, "\"")
 	lastQuote := strings.LastIndex(rest, "\"")
 	if firstQuote != -1 && lastQuote != -1 && lastQuote > firstQuote {
@@ -139,7 +140,7 @@ func (c *timelineCompiler) handleText(ctx *actionContext) {
 		remainder := rest[lastQuote+1:]
 
 		preset := ""
-		fontFamily := "sans"
+		fontFamily := constant.FONT_SANS
 		fontSize := 48.0
 		fontWeight := "regular"
 
@@ -195,9 +196,9 @@ func (c *timelineCompiler) handleText(ctx *actionContext) {
 			Y:           ty,
 			Width:       tw,
 			Height:      th,
-			EventType:   "text",
-			MaskStyle:   "ltr",
-			HandStyle:   "marker",
+			EventType:   constant.EVENT_TEXT,
+			MaskStyle:   constant.MASK_LTR,
+			HandStyle:   constant.HAND_MARKER,
 			ZoomFocus:   evFocus,
 		}
 		c.timeline.Events = append(c.timeline.Events, event)
@@ -205,9 +206,9 @@ func (c *timelineCompiler) handleText(ctx *actionContext) {
 		c.timeline.Events = append(c.timeline.Events, model.FrameEvent{
 			TargetImage: textAssetID,
 			StartFrame:  ctx.endFrame,
-			EndFrame:    999999,
+			EndFrame:    constant.FRAME_FOREVER,
 			X:           tx, Y: ty, Width: tw, Height: th,
-			EventType: "static",
+			EventType: constant.EVENT_STATIC,
 			ZoomFocus: evFocus,
 		})
 	}
@@ -230,26 +231,26 @@ func (c *timelineCompiler) handleEraseAll(ctx *actionContext) {
 	// Inert marker so the eventlog records the board wipe
 	c.timeline.Events = append(c.timeline.Events, model.FrameEvent{
 		StartFrame: ctx.startFrame,
-		EndFrame:   999999,
-		EventType:  "erase_all",
+		EndFrame:   constant.FRAME_FOREVER,
+		EventType:  constant.EVENT_ERASE_ALL,
 	})
 }
 
 func (c *timelineCompiler) handleErase(ctx *actionContext) {
-	targetAsset := strings.TrimPrefix(ctx.action.Tag, "erase:")
+	targetAsset := strings.TrimPrefix(ctx.action.Tag, constant.TAG_ERASE)
 	eraseEvent := model.FrameEvent{
 		TargetImage: targetAsset,
 		StartFrame:  ctx.startFrame,
 		EndFrame:    ctx.endFrame,
-		EventType:   "erase",
-		HandStyle:   "eraser",
-		MaskStyle:   "ttb",
+		EventType:   constant.EVENT_ERASE,
+		HandStyle:   constant.HAND_ERASER,
+		MaskStyle:   constant.MASK_TTB,
 		ZoomFocus:   c.currentZoomFocus,
 	}
 
 	found := false
 	for i := len(c.timeline.Events) - 1; i >= 0; i-- {
-		if c.timeline.Events[i].TargetImage == targetAsset && (c.timeline.Events[i].EventType == "draw" || c.timeline.Events[i].EventType == "text" || c.timeline.Events[i].EventType == "gen" || c.timeline.Events[i].EventType == "static") {
+		if c.timeline.Events[i].TargetImage == targetAsset && (c.timeline.Events[i].EventType == constant.EVENT_DRAW || c.timeline.Events[i].EventType == constant.EVENT_TEXT || c.timeline.Events[i].EventType == constant.EVENT_GEN || c.timeline.Events[i].EventType == constant.EVENT_STATIC) {
 			eraseEvent.X = c.timeline.Events[i].X
 			eraseEvent.Y = c.timeline.Events[i].Y
 			eraseEvent.Width = c.timeline.Events[i].Width
@@ -270,7 +271,7 @@ func (c *timelineCompiler) handleErase(ctx *actionContext) {
 }
 
 func (c *timelineCompiler) handleMove(ctx *actionContext) {
-	parts := strings.Split(strings.TrimPrefix(ctx.action.Tag, "move:"), ":")
+	parts := strings.Split(strings.TrimPrefix(ctx.action.Tag, constant.TAG_MOVE), ":")
 	targetAsset := parts[0]
 	destPreset := ""
 	if len(parts) > 1 {
@@ -283,7 +284,7 @@ func (c *timelineCompiler) handleMove(ctx *actionContext) {
 	var evFocus string = c.currentZoomFocus
 	for i := len(c.timeline.Events) - 1; i >= 0; i-- {
 		if c.timeline.Events[i].TargetImage == targetAsset {
-			if c.timeline.Events[i].EventType == "move" {
+			if c.timeline.Events[i].EventType == constant.EVENT_MOVE {
 				startX = c.timeline.Events[i].DestX
 				startY = c.timeline.Events[i].DestY
 			} else {
@@ -326,14 +327,14 @@ func (c *timelineCompiler) handleMove(ctx *actionContext) {
 			TargetImage: targetAsset,
 			StartFrame:  ctx.startFrame,
 			EndFrame:    ctx.endFrame,
-			EventType:   "move",
+			EventType:   constant.EVENT_MOVE,
 			X:           startX,
 			Y:           startY,
 			Width:       startW,
 			Height:      startH,
 			DestX:       destX,
 			DestY:       destY,
-			HandStyle:   "pencil",
+			HandStyle:   constant.HAND_PENCIL,
 			ZoomFocus:   moveFocus,
 		}
 		c.timeline.Events = append(c.timeline.Events, moveEvent)
@@ -341,12 +342,12 @@ func (c *timelineCompiler) handleMove(ctx *actionContext) {
 		staticDrawEvent := model.FrameEvent{
 			TargetImage: targetAsset,
 			StartFrame:  ctx.endFrame,
-			EndFrame:    999999,
+			EndFrame:    constant.FRAME_FOREVER,
 			X:           destX,
 			Y:           destY,
 			Width:       startW,
 			Height:      startH,
-			EventType:   "static",
+			EventType:   constant.EVENT_STATIC,
 			ZoomFocus:   moveFocus,
 		}
 		c.timeline.Events = append(c.timeline.Events, staticDrawEvent)
@@ -354,7 +355,7 @@ func (c *timelineCompiler) handleMove(ctx *actionContext) {
 }
 
 func (c *timelineCompiler) handleGen(ctx *actionContext) {
-	rest := strings.TrimPrefix(ctx.action.Tag, "gen:")
+	rest := strings.TrimPrefix(ctx.action.Tag, constant.TAG_GEN)
 	parts := strings.Split(rest, ":")
 	prompt := parts[0]
 	preset := ""
@@ -394,9 +395,9 @@ func (c *timelineCompiler) handleGen(ctx *actionContext) {
 		Y:           ty,
 		Width:       tw,
 		Height:      th,
-		EventType:   "draw",
-		MaskStyle:   "diagonal",
-		HandStyle:   "pencil",
+		EventType:   constant.EVENT_DRAW,
+		MaskStyle:   constant.MASK_DIAGONAL,
+		HandStyle:   constant.HAND_PENCIL,
 		ZoomFocus:   genFocus,
 	}
 	c.timeline.Events = append(c.timeline.Events, event)
@@ -404,9 +405,9 @@ func (c *timelineCompiler) handleGen(ctx *actionContext) {
 	c.timeline.Events = append(c.timeline.Events, model.FrameEvent{
 		TargetImage: genAssetID,
 		StartFrame:  ctx.endFrame,
-		EndFrame:    999999,
+		EndFrame:    constant.FRAME_FOREVER,
 		X:           tx, Y: ty, Width: tw, Height: th,
-		EventType: "static",
+		EventType: constant.EVENT_STATIC,
 		ZoomFocus: genFocus,
 	})
 }
@@ -428,18 +429,18 @@ func (c *timelineCompiler) handleClear(ctx *actionContext) {
 	// Inert marker so the eventlog records the board wipe
 	c.timeline.Events = append(c.timeline.Events, model.FrameEvent{
 		StartFrame: ctx.startFrame,
-		EndFrame:   999999,
-		EventType:  "clear",
+		EndFrame:   constant.FRAME_FOREVER,
+		EventType:  constant.EVENT_CLEAR,
 	})
 }
 
 func (c *timelineCompiler) handleSlide(ctx *actionContext) {
-	rest := strings.TrimPrefix(ctx.action.Tag, "slide:")
+	rest := strings.TrimPrefix(ctx.action.Tag, constant.TAG_SLIDE)
 	parts := strings.Split(rest, ":")
 	asset := parts[0]
 	preset := ""
-	transition := "none"
-	fitMode := "fit"
+	transition := constant.TRANSITION_NONE
+	fitMode := constant.FIT_FIT
 	if len(parts) > 1 && parts[1] != "" {
 		preset = parts[1]
 	}
@@ -473,7 +474,7 @@ func (c *timelineCompiler) handleSlide(ctx *actionContext) {
 		StartFrame:  ctx.startFrame,
 		EndFrame:    ctx.endFrame,
 		X:           sx, Y: sy, Width: sw, Height: sh,
-		EventType:  "slide",
+		EventType:  constant.EVENT_SLIDE,
 		ZoomFocus:  slideFocus,
 		Transition: transition,
 		FitMode:    fitMode,
@@ -481,17 +482,17 @@ func (c *timelineCompiler) handleSlide(ctx *actionContext) {
 	c.timeline.Events = append(c.timeline.Events, model.FrameEvent{
 		TargetImage: asset,
 		StartFrame:  ctx.endFrame,
-		EndFrame:    999999,
+		EndFrame:    constant.FRAME_FOREVER,
 		X:           sx, Y: sy, Width: sw, Height: sh,
-		EventType:  "slide",
+		EventType:  constant.EVENT_SLIDE,
 		ZoomFocus:  slideFocus,
-		Transition: "none",
+		Transition: constant.TRANSITION_NONE,
 		FitMode:    fitMode,
 	})
 }
 
 func (c *timelineCompiler) handleBanner(ctx *actionContext) {
-	rest := strings.TrimPrefix(ctx.action.Tag, "banner:")
+	rest := strings.TrimPrefix(ctx.action.Tag, constant.TAG_BANNER)
 	parts := strings.Split(rest, ":")
 	title := ""
 	subtitle := ""
@@ -522,17 +523,17 @@ func (c *timelineCompiler) handleBanner(ctx *actionContext) {
 		TargetImage: targetID,
 		StartFrame:  ctx.startFrame,
 		EndFrame:    end,
-		EventType:   "banner",
+		EventType:   constant.EVENT_BANNER,
 		ZoomFocus:   c.currentZoomFocus,
 	})
 }
 
 func (c *timelineCompiler) handleArrow(ctx *actionContext) {
-	rest := strings.TrimPrefix(ctx.action.Tag, "arrow:")
+	rest := strings.TrimPrefix(ctx.action.Tag, constant.TAG_ARROW)
 	parts := strings.Split(rest, ":")
 	from := parts[0]
 	to := parts[1]
-	style := "straight"
+	style := constant.ARROW_STRAIGHT
 	duration := 1.0
 	if len(parts) > 2 && parts[2] != "" {
 		style = parts[2]
@@ -547,7 +548,7 @@ func (c *timelineCompiler) handleArrow(ctx *actionContext) {
 	c.timeline.Events = append(c.timeline.Events, model.FrameEvent{
 		StartFrame: ctx.startFrame,
 		EndFrame:   end,
-		EventType:  "arrow",
+		EventType:  constant.EVENT_ARROW,
 		ArrowFrom:  from,
 		ArrowTo:    to,
 		ArrowStyle: style,
@@ -555,8 +556,8 @@ func (c *timelineCompiler) handleArrow(ctx *actionContext) {
 	})
 	c.timeline.Events = append(c.timeline.Events, model.FrameEvent{
 		StartFrame: end,
-		EndFrame:   999999,
-		EventType:  "arrow_static",
+		EndFrame:   constant.FRAME_FOREVER,
+		EventType:  constant.EVENT_ARROW_STATIC,
 		ArrowFrom:  from,
 		ArrowTo:    to,
 		ArrowStyle: style,
@@ -565,10 +566,10 @@ func (c *timelineCompiler) handleArrow(ctx *actionContext) {
 }
 
 func (c *timelineCompiler) handleHighlight(ctx *actionContext) {
-	rest := strings.TrimPrefix(ctx.action.Tag, "highlight:")
+	rest := strings.TrimPrefix(ctx.action.Tag, constant.TAG_HIGHLIGHT)
 	parts := strings.Split(rest, ":")
 	region := parts[0]
-	style := "rect"
+	style := constant.HIGHLIGHT_RECT
 	duration := 2.0
 	if len(parts) > 1 && parts[1] != "" {
 		style = parts[1]
@@ -583,7 +584,7 @@ func (c *timelineCompiler) handleHighlight(ctx *actionContext) {
 	c.timeline.Events = append(c.timeline.Events, model.FrameEvent{
 		StartFrame:     ctx.startFrame,
 		EndFrame:       end,
-		EventType:      "highlight",
+		EventType:      constant.EVENT_HIGHLIGHT,
 		TargetImage:    region,
 		HighlightStyle: style,
 		ZoomFocus:      c.currentZoomFocus,
@@ -591,7 +592,7 @@ func (c *timelineCompiler) handleHighlight(ctx *actionContext) {
 }
 
 func (c *timelineCompiler) handleCompare(ctx *actionContext) {
-	rest := strings.TrimPrefix(ctx.action.Tag, "compare:")
+	rest := strings.TrimPrefix(ctx.action.Tag, constant.TAG_COMPARE)
 	parts := strings.Split(rest, ":")
 	left := parts[0]
 	right := parts[1]
@@ -607,7 +608,7 @@ func (c *timelineCompiler) handleCompare(ctx *actionContext) {
 	c.timeline.Events = append(c.timeline.Events, model.FrameEvent{
 		StartFrame:   ctx.startFrame,
 		EndFrame:     ctx.endFrame,
-		EventType:    "compare",
+		EventType:    constant.EVENT_COMPARE,
 		CompareLeft:  left,
 		CompareRight: right,
 		LabelLeft:    lblLeft,
@@ -616,8 +617,8 @@ func (c *timelineCompiler) handleCompare(ctx *actionContext) {
 	})
 	c.timeline.Events = append(c.timeline.Events, model.FrameEvent{
 		StartFrame:   ctx.endFrame,
-		EndFrame:     999999,
-		EventType:    "compare",
+		EndFrame:     constant.FRAME_FOREVER,
+		EventType:    constant.EVENT_COMPARE,
 		CompareLeft:  left,
 		CompareRight: right,
 		LabelLeft:    lblLeft,
@@ -627,11 +628,11 @@ func (c *timelineCompiler) handleCompare(ctx *actionContext) {
 }
 
 func (c *timelineCompiler) handleOverlay(ctx *actionContext) {
-	rest := strings.TrimPrefix(ctx.action.Tag, "overlay:")
+	rest := strings.TrimPrefix(ctx.action.Tag, constant.TAG_OVERLAY)
 	parts := strings.Split(rest, ":")
 	asset := parts[0]
 	opacity := 0.5
-	preset := "fullscreen"
+	preset := constant.PRESET_FULLSCREEN
 	if len(parts) > 1 && parts[1] != "" {
 		if op, err := strconv.ParseFloat(parts[1], 64); err == nil {
 			opacity = op
@@ -644,15 +645,15 @@ func (c *timelineCompiler) handleOverlay(ctx *actionContext) {
 	c.timeline.Events = append(c.timeline.Events, model.FrameEvent{
 		TargetImage: asset,
 		StartFrame:  ctx.startFrame,
-		EndFrame:    999999,
-		EventType:   "overlay",
+		EndFrame:    constant.FRAME_FOREVER,
+		EventType:   constant.EVENT_OVERLAY,
 		Opacity:     opacity,
 		ZoomFocus:   preset,
 	})
 }
 
 func (c *timelineCompiler) handleTransition(ctx *actionContext) {
-	rest := strings.TrimPrefix(ctx.action.Tag, "transition:")
+	rest := strings.TrimPrefix(ctx.action.Tag, constant.TAG_TRANSITION)
 	parts := strings.Split(rest, ":")
 	tType := parts[0]
 	duration := 0.5
@@ -682,20 +683,20 @@ func (c *timelineCompiler) handleTransition(ctx *actionContext) {
 	c.timeline.Events = append(c.timeline.Events, model.FrameEvent{
 		StartFrame:     ctx.startFrame,
 		EndFrame:       end,
-		EventType:      "transition",
+		EventType:      constant.EVENT_TRANSITION,
 		TransitionType: tType,
 		ZoomFocus:      c.currentZoomFocus,
 	})
 }
 
 func (c *timelineCompiler) handleCounter(ctx *actionContext) {
-	rest := strings.TrimPrefix(ctx.action.Tag, "counter:")
+	rest := strings.TrimPrefix(ctx.action.Tag, constant.TAG_COUNTER)
 	parts := strings.Split(rest, ":")
 	cStart := 0.0
 	cEnd := 0.0
 	duration := 2.0
 	format := "%d"
-	preset := "center"
+	preset := constant.PRESET_CENTER
 
 	if len(parts) > 0 {
 		cStart, _ = strconv.ParseFloat(parts[0], 64)
@@ -717,7 +718,7 @@ func (c *timelineCompiler) handleCounter(ctx *actionContext) {
 	c.timeline.Events = append(c.timeline.Events, model.FrameEvent{
 		StartFrame:    ctx.startFrame,
 		EndFrame:      end,
-		EventType:     "counter",
+		EventType:     constant.EVENT_COUNTER,
 		CounterStart:  cStart,
 		CounterEnd:    cEnd,
 		CounterFormat: format,
@@ -725,8 +726,8 @@ func (c *timelineCompiler) handleCounter(ctx *actionContext) {
 	})
 	c.timeline.Events = append(c.timeline.Events, model.FrameEvent{
 		StartFrame:    end,
-		EndFrame:      999999,
-		EventType:     "counter",
+		EndFrame:      constant.FRAME_FOREVER,
+		EventType:     constant.EVENT_COUNTER,
 		CounterStart:  cEnd,
 		CounterEnd:    cEnd,
 		CounterFormat: format,
@@ -767,7 +768,7 @@ func (c *timelineCompiler) handleDraw(ctx *actionContext) {
 		drawFocus = c.currentZoomFocus
 	}
 
-	cursorName := extractCursor(ctx.action.AssetVariant, "hand")
+	cursorName := extractCursor(ctx.action.AssetVariant, constant.CURSOR_HAND)
 
 	// Reveal animation event
 	c.timeline.Events = append(c.timeline.Events, model.FrameEvent{
@@ -778,9 +779,9 @@ func (c *timelineCompiler) handleDraw(ctx *actionContext) {
 		Y:            y,
 		Width:        w,
 		Height:       h,
-		EventType:    "draw",
-		MaskStyle:    "diagonal",
-		HandStyle:    "pencil",
+		EventType:    constant.EVENT_DRAW,
+		MaskStyle:    constant.MASK_DIAGONAL,
+		HandStyle:    constant.HAND_PENCIL,
 		Cursor:       cursorName,
 		ZoomFocus:    drawFocus,
 		AssetVariant: ctx.action.AssetVariant,
@@ -789,12 +790,12 @@ func (c *timelineCompiler) handleDraw(ctx *actionContext) {
 	c.timeline.Events = append(c.timeline.Events, model.FrameEvent{
 		TargetImage:  ctx.actionTag,
 		StartFrame:   ctx.endFrame,
-		EndFrame:     999999,
+		EndFrame:     constant.FRAME_FOREVER,
 		X:            x,
 		Y:            y,
 		Width:        w,
 		Height:       h,
-		EventType:    "static",
+		EventType:    constant.EVENT_STATIC,
 		ZoomFocus:    drawFocus,
 		AssetVariant: ctx.action.AssetVariant,
 	})

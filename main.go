@@ -13,6 +13,7 @@ import (
 
 	"zen-board/internal/assets"
 	"zen-board/internal/builder"
+	"zen-board/internal/constant"
 	"zen-board/internal/ffmpeg"
 	"zen-board/internal/model"
 	"zen-board/internal/render"
@@ -214,11 +215,11 @@ func Run() error {
 	// 6. Preparing Engine & Assets
 	cursorDir := filepath.Join(conf.AssetsDir, "cursors")
 	cursorRegistry := render.NewCursorRegistry(cursorDir)
-	_ = cursorRegistry.Get("hand") // warm hand cache during init
+	_ = cursorRegistry.Get(constant.CURSOR_HAND) // warm hand cache during init
 
 	defaultCursor := *cursorFlag
 	if defaultCursor == "" {
-		defaultCursor = "hand"
+		defaultCursor = constant.CURSOR_HAND
 	}
 
 	var engine *render.Engine

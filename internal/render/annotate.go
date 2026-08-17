@@ -8,6 +8,7 @@ import (
 	"math"
 	"strconv"
 	"strings"
+	"zen-board/internal/constant"
 	"zen-board/internal/model"
 
 	xdraw "golang.org/x/image/draw"
@@ -215,7 +216,7 @@ func handleArrowEvent(e *Engine, frameNum int, ev model.FrameEvent, buf *image.R
 	}
 
 	progress := 1.0
-	if ev.EventType == "arrow" {
+	if ev.EventType == constant.EVENT_ARROW {
 		progress = CalcProgress(frameNum, ev.StartFrame, ev.EndFrame)
 	}
 
@@ -252,11 +253,11 @@ func handleHighlightEvent(e *Engine, frameNum int, ev model.FrameEvent, buf *ima
 
 	style := ev.HighlightStyle
 	if style == "" {
-		style = "rect"
+		style = constant.HIGHLIGHT_RECT
 	}
 
 	switch style {
-	case "rect":
+	case constant.HIGHLIGHT_RECT:
 		phase := frameNum * 2
 		drawDashedLine(buf, x, y, x+w, y, 12, 6, phase, col)
 		drawDashedLine(buf, x+w, y, x+w, y+h, 12, 6, phase, col)
@@ -451,7 +452,7 @@ func handleCompareEvent(e *Engine, frameNum int, ev model.FrameEvent, buf *image
 	}
 
 	colBorder := color.RGBA{R: 240, G: 240, B: 240, A: 255}
-	if style == "blackboard" || style == "glassboard" {
+	if style == constant.STYLE_BLACKBOARD || style == constant.STYLE_GLASSBOARD {
 		colBorder = color.RGBA{R: 40, G: 40, B: 40, A: 255}
 	}
 	colBorder.A = uint8(float64(colBorder.A) * visibility)
@@ -471,7 +472,7 @@ func drawCompareLabel(buf *image.RGBA, text string, x, y int, isLeft bool, style
 	colText = ApplyAlpha(colText, visibility)
 	colBg = ApplyAlpha(colBg, visibility)
 
-	txtImg, err := RenderText(text, "sans", 28, true, colText)
+	txtImg, err := RenderText(text, constant.FONT_SANS, 28, true, colText)
 	if err != nil {
 		return
 	}
@@ -503,7 +504,7 @@ func handleOverlayEvent(e *Engine, frameNum int, ev model.FrameEvent, buf *image
 
 	var ox, oy, ow, oh int
 	preset := ev.ZoomFocus
-	if preset == "fullscreen" || preset == "" {
+	if preset == constant.PRESET_FULLSCREEN || preset == "" {
 		ox, oy, ow, oh = 0, 0, canvasW, canvasH
 	} else {
 		ox, oy, ow, oh = model.GetPresetLayout(preset, canvasW, canvasH)
@@ -546,7 +547,7 @@ func handleCounterEvent(e *Engine, frameNum int, ev model.FrameEvent, buf *image
 	canvasH := buf.Bounds().Dy()
 	cx, cy, cw, ch := model.GetPresetLayout(ev.ZoomFocus, canvasW, canvasH)
 
-	txtImg, err := RenderText(text, "sans", 72, true, colText)
+	txtImg, err := RenderText(text, constant.FONT_SANS, 72, true, colText)
 	if err != nil {
 		return
 	}
