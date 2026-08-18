@@ -110,6 +110,7 @@ Defaults: preset = current zoom focus, `sans` / `48` / `regular`; `bold` → IsB
 
 ```zen
 [text:"AI Innovation":RH:sans:48:bold]
+[text:"Zen-Board V3":center:sans:72:bold]   // centered title card (preset center = full canvas)
 ```
 
 ### `[slide]` — drop an image with a transition (no hand-draw)
@@ -201,10 +202,13 @@ Both truncate all active events at the action frame and reset the auto-grid.
 ## Scene-Control Actions: chapter / style / zoom / subtitle / wait / sfx
 
 ### `[chapter:"<title>"]`
-Writes an FFmpeg chapter marker at the trigger time.
+Zero visual output — nothing is drawn to the screen. Writes an FFmpeg chapter marker (`FFMETADATA1` → `[CHAPTER]` block) into the output MP4 metadata so advanced players (mpv, VLC, YouTube) can list and jump straight to a section by title. Each chapter spans from its trigger time to the next chapter's trigger time; the last chapter extends to the end of the video.
+
+Use one per section, placed at the start of the section's narration line so the jump target lands on the spoken intro. On-screen titles/cards are `[text:]`'s job — `[chapter:]` never renders anything.
 
 ```zen
 [chapter:"Intro"]
+[chapter:"Slideshow"]The new [slide:pyramids:fullscreen:fade] primitive lets you drop images instantly.
 ```
 
 ### `[style:<name>]`
