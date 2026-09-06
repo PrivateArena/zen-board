@@ -1,0 +1,2 @@
+- Gaijin Hunter in Vietnamese
+- Why Republic Vietnamese hate Vietnam, but not Republic China
