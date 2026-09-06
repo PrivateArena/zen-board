@@ -29,7 +29,7 @@ type actionContext struct {
 // reserved command prefixes. Special actions bypass the generic
 // "<asset>:<preset>:<duration>" tag parsing performed for draw actions.
 func isSpecialAction(tag string) bool {
-	specialPrefixes := []string{constant.TAG_WAIT, constant.TAG_ZOOM, constant.TAG_STYLE, constant.TAG_CHAPTER, constant.TAG_SFX, constant.TAG_SUBTITLE, constant.TAG_TEXT, constant.TAG_ERASE, constant.TAG_MOVE, constant.TAG_GEN, constant.TAG_SLIDE, constant.TAG_BANNER, constant.TAG_ARROW, constant.TAG_HIGHLIGHT, constant.TAG_COMPARE, constant.TAG_TRANSITION, constant.TAG_OVERLAY, constant.TAG_COUNTER}
+	specialPrefixes := []string{constant.TAG_WAIT, constant.TAG_ZOOM, constant.TAG_STYLE, constant.TAG_CHAPTER, constant.TAG_SFX, constant.TAG_SUBTITLE, constant.TAG_TEXT, constant.TAG_ERASE, constant.TAG_MOVE, constant.TAG_GEN, constant.TAG_SLIDE, constant.TAG_BANNER, constant.TAG_WATERMARK, constant.TAG_ARROW, constant.TAG_HIGHLIGHT, constant.TAG_COMPARE, constant.TAG_TRANSITION, constant.TAG_OVERLAY, constant.TAG_COUNTER}
 	for _, prefix := range specialPrefixes {
 		if strings.HasPrefix(tag, prefix) {
 			return true
@@ -72,6 +72,8 @@ func (c *timelineCompiler) dispatch(ctx *actionContext) {
 		c.handleSlide(ctx)
 	case strings.HasPrefix(tag, constant.TAG_BANNER):
 		c.handleBanner(ctx)
+	case strings.HasPrefix(tag, constant.TAG_WATERMARK):
+		c.handleWatermark(ctx)
 	case strings.HasPrefix(tag, constant.TAG_ARROW):
 		c.handleArrow(ctx)
 	case strings.HasPrefix(tag, constant.TAG_HIGHLIGHT):
@@ -524,6 +526,37 @@ func (c *timelineCompiler) handleBanner(ctx *actionContext) {
 		StartFrame:  ctx.startFrame,
 		EndFrame:    end,
 		EventType:   constant.EVENT_BANNER,
+		ZoomFocus:   c.currentZoomFocus,
+	})
+}
+
+// handleWatermark creates a persistent overlay watermark. The tag format is:
+// [watermark:<source>:<position>]
+// where <source> is either text (e.g. "CavemanExplains") or an image path,
+// and <position> is one of TL, TR, BL, BR (top-left, top-right, bottom-left,
+// bottom-right). The watermark persists for the entire video duration.
+func (c *timelineCompiler) handleWatermark(ctx *actionContext) {
+	rest := strings.TrimPrefix(ctx.action.Tag, constant.TAG_WATERMARK)
+	parts := strings.Split(rest, ":")
+	source := parts[0]
+	position := "TL"
+	if len(parts) > 1 {
+		position = strings.ToUpper(parts[1])
+	}
+	// Validate position
+	validPositions := map[string]bool{"TL": true, "TR": true, "BL": true, "BR": true}
+	if !validPositions[position] {
+		position = "TL"
+	}
+
+	targetID := fmt.Sprintf("__watermark_%s|%s", source, position)
+
+	// Watermark persists for the entire video: FRAME_FOREVER
+	c.timeline.Events = append(c.timeline.Events, model.FrameEvent{
+		TargetImage: targetID,
+		StartFrame:  ctx.startFrame,
+		EndFrame:    constant.FRAME_FOREVER,
+		EventType:   constant.EVENT_WATERMARK,
 		ZoomFocus:   c.currentZoomFocus,
 	})
 }

@@ -197,3 +197,53 @@ func TestMarkerEventsRenderInert(t *testing.T) {
 		}
 	}
 }
+
+func TestWatermarkEmitsPersistentEvent(t *testing.T) {
+	tl := compileMarkers(t,
+		pLineAt(t, 0.0, `[watermark:CavemanExplains:TL]`),
+	)
+	watermarks := markersOf(t, tl, "watermark")
+	if len(watermarks) != 1 {
+		t.Fatalf("Expected 1 watermark event, got %d", len(watermarks))
+	}
+	wm := watermarks[0]
+	if wm.StartFrame != 0 {
+		t.Errorf("StartFrame = %d, want 0", wm.StartFrame)
+	}
+	if wm.EndFrame != 999999 {
+		t.Errorf("EndFrame = %d, want 999999 (FRAME_FOREVER — watermark persists)", wm.EndFrame)
+	}
+	if !strings.Contains(wm.TargetImage, "CavemanExplains") {
+		t.Errorf("TargetImage = %q, want to contain 'CavemanExplains'", wm.TargetImage)
+	}
+	if !strings.Contains(wm.TargetImage, "TL") {
+		t.Errorf("TargetImage = %q, want to contain 'TL'", wm.TargetImage)
+	}
+}
+
+func TestWatermarkPositions(t *testing.T) {
+	for _, pos := range []string{"TL", "TR", "BL", "BR"} {
+		tl := compileMarkers(t, pLineAt(t, 0.0, fmt.Sprintf(`[watermark:Brand:%s]`, pos)))
+		watermarks := markersOf(t, tl, "watermark")
+		if len(watermarks) != 1 {
+			t.Errorf("Position %s: expected 1 watermark event, got %d", pos, len(watermarks))
+			continue
+		}
+		if !strings.Contains(watermarks[0].TargetImage, pos) {
+			t.Errorf("Position %s: TargetImage = %q, want to contain '%s'", pos, watermarks[0].TargetImage, pos)
+		}
+	}
+}
+
+func TestWatermarkImagePath(t *testing.T) {
+	tl := compileMarkers(t,
+		pLineAt(t, 0.0, `[watermark:/assets/logo.png:BR]`),
+	)
+	watermarks := markersOf(t, tl, "watermark")
+	if len(watermarks) != 1 {
+		t.Fatalf("Expected 1 watermark event, got %d", len(watermarks))
+	}
+	if !strings.Contains(watermarks[0].TargetImage, "/assets/logo.png") {
+		t.Errorf("TargetImage = %q, want to contain '/assets/logo.png'", watermarks[0].TargetImage)
+	}
+}

@@ -27,6 +27,7 @@ const (
 	TAG_OVERLAY    = "overlay:"
 	TAG_TRANSITION = "transition:"
 	TAG_COUNTER    = "counter:"
+	TAG_WATERMARK  = "watermark:"
 )
 
 // FrameEvent.EventType values emitted by the timeline compiler and consumed by
@@ -49,6 +50,7 @@ const (
 	EVENT_COUNTER      = "counter"
 	EVENT_TRANSITION   = "transition"
 	EVENT_OVERLAY      = "overlay"
+	EVENT_WATERMARK    = "watermark"
 	EVENT_STYLE        = "style"
 	EVENT_CHAPTER      = "chapter"
 )

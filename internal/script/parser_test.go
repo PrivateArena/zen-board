@@ -1,6 +1,7 @@
 package script
 
 import (
+	"fmt"
 	"testing"
 )
 
@@ -157,5 +158,56 @@ func TestParseV3Tags(t *testing.T) {
 		if actions[i].Tag != expected {
 			t.Errorf("Action %d tag mismatch: expected %q, got %q", i, expected, actions[i].Tag)
 		}
+	}
+}
+
+func TestParseWatermark(t *testing.T) {
+	input := `[watermark:CavemanExplains:TL] Welcome to the show.`
+	lines := Parse(input)
+	if len(lines) != 1 {
+		t.Fatalf("Expected 1 line, got %d", len(lines))
+	}
+	if lines[0].Text != "Welcome to the show." {
+		t.Errorf("Text mismatch: %s", lines[0].Text)
+	}
+	if len(lines[0].Actions) != 1 {
+		t.Fatalf("Expected 1 action, got %d", len(lines[0].Actions))
+	}
+	expectedTag := "watermark:CavemanExplains:TL"
+	if lines[0].Actions[0].Tag != expectedTag {
+		t.Errorf("Tag mismatch: got %q, want %q", lines[0].Actions[0].Tag, expectedTag)
+	}
+	if lines[0].Actions[0].WordIndex != 0 {
+		t.Errorf("WordIndex should be 0, got %d", lines[0].Actions[0].WordIndex)
+	}
+}
+
+func TestParseWatermarkPositions(t *testing.T) {
+	positions := []string{"TL", "TR", "BL", "BR"}
+	for _, pos := range positions {
+		input := fmt.Sprintf(`[watermark:MyBrand:%s] Hello world`, pos)
+		lines := Parse(input)
+		if len(lines) != 1 {
+			t.Fatalf("Position %s: expected 1 line, got %d", pos, len(lines))
+		}
+		expectedTag := fmt.Sprintf("watermark:MyBrand:%s", pos)
+		if lines[0].Actions[0].Tag != expectedTag {
+			t.Errorf("Position %s: tag mismatch: got %q, want %q", pos, lines[0].Actions[0].Tag, expectedTag)
+		}
+	}
+}
+
+func TestParseWatermarkImagePath(t *testing.T) {
+	input := `[watermark:/path/to/logo.png:BR] Presenting...`
+	lines := Parse(input)
+	if len(lines) != 1 {
+		t.Fatalf("Expected 1 line, got %d", len(lines))
+	}
+	expectedTag := "watermark:/path/to/logo.png:BR"
+	if lines[0].Actions[0].Tag != expectedTag {
+		t.Errorf("Tag mismatch: got %q, want %q", lines[0].Actions[0].Tag, expectedTag)
+	}
+	if lines[0].Text != "Presenting..." {
+		t.Errorf("Text mismatch: %s", lines[0].Text)
 	}
 }

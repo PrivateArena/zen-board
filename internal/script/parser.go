@@ -29,6 +29,7 @@ var (
 	transitionRegex = regexp.MustCompile(`\[transition:([^\]]+)\]`)
 	overlayRegex    = regexp.MustCompile(`\[overlay:([^\]]+)\]`)
 	counterRegex    = regexp.MustCompile(`\[counter:([^\]]+)\]`)
+	watermarkRegex  = regexp.MustCompile(`\[watermark:([^\]]+)\]`)
 )
 
 func Parse(input string) []model.ScriptLine {
@@ -191,6 +192,7 @@ func extractActions(line string) (string, []model.DrawAction) {
 
 	extractComplexTag(slideRegex, constant.TAG_SLIDE)
 	extractComplexTag(bannerRegex, constant.TAG_BANNER)
+	extractComplexTag(watermarkRegex, constant.TAG_WATERMARK)
 	extractComplexTag(arrowRegex, constant.TAG_ARROW)
 	extractComplexTag(highlightRegex, constant.TAG_HIGHLIGHT)
 	extractComplexTag(compareRegex, constant.TAG_COMPARE)

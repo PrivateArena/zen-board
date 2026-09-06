@@ -203,6 +203,11 @@ func (e *Engine) RenderFrame(frameNum int, events []model.FrameEvent, cam Camera
 			continue
 		}
 
+		if ev.EventType == constant.EVENT_WATERMARK {
+			handleWatermarkEvent(e, frameNum, ev, buf, cam)
+			continue
+		}
+
 		if ev.EventType == constant.EVENT_ARROW || ev.EventType == constant.EVENT_ARROW_STATIC {
 			handX, handY, active := handleArrowEvent(e, frameNum, ev, buf, visibility)
 			if active && ev.EventType == constant.EVENT_ARROW {

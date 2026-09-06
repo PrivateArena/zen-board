@@ -257,7 +257,7 @@ func (c *timelineCompiler) validateAssets() error {
 			}
 			continue
 		}
-		if ev.TargetImage == "" || ev.TargetImage == constant.TAG_CLEAR || strings.HasPrefix(ev.TargetImage, "__text_") || strings.HasPrefix(ev.TargetImage, "__gen_") || strings.HasPrefix(ev.TargetImage, "__banner_") {
+		if ev.TargetImage == "" || ev.TargetImage == constant.TAG_CLEAR || strings.HasPrefix(ev.TargetImage, "__text_") || strings.HasPrefix(ev.TargetImage, "__gen_") || strings.HasPrefix(ev.TargetImage, "__banner_") || strings.HasPrefix(ev.TargetImage, "__watermark_") {
 			continue
 		}
 		if ev.EventType == constant.EVENT_ARROW || ev.EventType == constant.EVENT_ARROW_STATIC || ev.EventType == constant.EVENT_HIGHLIGHT || ev.EventType == constant.EVENT_COUNTER || ev.EventType == constant.EVENT_TRANSITION {
@@ -412,7 +412,7 @@ func PrepareAssets(conf *model.Project, engine *render.Engine, timeline *model.T
 			}
 			continue
 		}
-		if ev.TargetImage == "" || ev.TargetImage == constant.TAG_CLEAR || strings.HasPrefix(ev.TargetImage, "__text_") || strings.HasPrefix(ev.TargetImage, "__gen_") || strings.HasPrefix(ev.TargetImage, "__banner_") {
+		if ev.TargetImage == "" || ev.TargetImage == constant.TAG_CLEAR || strings.HasPrefix(ev.TargetImage, "__text_") || strings.HasPrefix(ev.TargetImage, "__gen_") || strings.HasPrefix(ev.TargetImage, "__banner_") || strings.HasPrefix(ev.TargetImage, "__watermark_") {
 			continue
 		}
 		if ev.EventType == constant.EVENT_ARROW || ev.EventType == constant.EVENT_ARROW_STATIC || ev.EventType == constant.EVENT_HIGHLIGHT || ev.EventType == constant.EVENT_COUNTER || ev.EventType == constant.EVENT_TRANSITION {
