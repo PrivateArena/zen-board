@@ -158,6 +158,9 @@ External protocol: HTTP to zen-lights (TTS synthesis + asset generation, address
 | ffmpeg | External binary; encoding via stdin pipe (audio mix, subtitles, metadata) |
 | rembg (optional) | Background-removal backend for asset processing |
 
+## Important Commits
+84bc1238080951fbdf2193f7533f0810606d17b5 - feat: added watermark to scripting API 
+
 ## Build & Run
 | Command | Purpose |
 |---|---|
