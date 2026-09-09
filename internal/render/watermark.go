@@ -17,10 +17,10 @@ import (
 // watermarkPositions maps anchor strings to (xFrac, yFrac) — fraction of canvas
 // width/height for the watermark's top-left corner.
 var watermarkPositions = map[string][2]float64{
-	"TL": {0.02, 0.02},   // top-left
-	"TR": {0.72, 0.02},   // top-right
-	"BL": {0.02, 0.88},   // bottom-left
-	"BR": {0.72, 0.88},   // bottom-right
+	"TL": {0.02, 0.02}, // top-left
+	"TR": {0.72, 0.02}, // top-right
+	"BL": {0.02, 0.88}, // bottom-left
+	"BR": {0.72, 0.88}, // bottom-right
 }
 
 // handleWatermarkEvent renders a persistent watermark overlay.
