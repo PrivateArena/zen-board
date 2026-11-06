@@ -11,7 +11,11 @@ type Pipe struct {
 	cmd      *exec.Cmd
 	stdin    io.WriteCloser
 	extraCmd *exec.Cmd
+	outPath  string
 }
+
+// OutputPath is the file this pipe encodes into ("" for a preview stream).
+func (p *Pipe) OutputPath() string { return p.outPath }
 
 func buildAudioArgs(audioPath, bgmPath string, bgmVolume float64, videoIdx int, nextIdxStart int) (inputArgs []string, filterComplex []string, mapArgs []string, nextIdx int) {
 	nextIdx = nextIdxStart
@@ -129,7 +133,7 @@ func NewPipe(outputPath, audioPath, assPath, bgmPath string, bgmVolume float64, 
 		return nil, err
 	}
 
-	return &Pipe{cmd: cmd, stdin: stdin}, nil
+	return &Pipe{cmd: cmd, stdin: stdin, outPath: outputPath}, nil
 }
 
 func (p *Pipe) WriteFrame(data []byte) error {

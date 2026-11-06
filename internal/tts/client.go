@@ -70,6 +70,34 @@ func getCacheKey(text string, speed float64, voice string) string {
 	return hex.EncodeToString(hasher.Sum(nil))
 }
 
+// Cached returns a previously synthesised result without touching the network.
+// Both the audio and its timing sidecar must be present: a WAV without timings would
+// silently degrade the word-synced timeline.
+func (c *TTSClient) Cached(text string, speed float64, voice string) (*TTSResult, bool) {
+	cacheDir := c.CacheDir
+	if cacheDir == "" {
+		cacheDir = "/tmp/zen-board/tts"
+	}
+	hashKey := getCacheKey(text, speed, voice)
+	wavBytes, err := os.ReadFile(filepath.Join(cacheDir, hashKey+".wav"))
+	if err != nil {
+		return nil, false
+	}
+	jsonBytes, err := os.ReadFile(filepath.Join(cacheDir, hashKey+".json"))
+	if err != nil {
+		return nil, false
+	}
+	var meta CachedMetadata
+	if err := json.Unmarshal(jsonBytes, &meta); err != nil {
+		return nil, false
+	}
+	dur := meta.Duration
+	if wavDur, werr := GetWAVDuration(wavBytes); werr == nil {
+		dur = wavDur
+	}
+	return &TTSResult{Audio: wavBytes, Timings: meta.Timings, Duration: dur}, true
+}
+
 // SynthesizeWithTimings wraps SynthesizeWithTimingsRaw with file-based caching.
 func (c *TTSClient) SynthesizeWithTimings(text string, speed float64, voice string) (*TTSResult, error) {
 	cacheDir := c.CacheDir

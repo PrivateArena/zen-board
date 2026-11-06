@@ -1,0 +1,4 @@
+Meet our guide. [draw:funny_human_2d_comic_with_big_nose_fat_l:BR]
+Here is the city we are talking about. [zoom:LH] [draw:city]
+Our guide reacts. [erase:funny_human_2d_comic_with_big_nose_fat_l] [draw:comic_big_nose_fat_lung_screaming:BR]
+And now the payoff. [zoom:reset] [text:"He agrees":center:sans:56:bold]

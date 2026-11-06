@@ -79,6 +79,11 @@ const (
 // of the video; it is clamped to the render duration at render time.
 const FRAME_FOREVER = 999999
 
+// TTS_MAX_CONCURRENCY bounds simultaneous requests to the TTS server on a cold
+// cache. One request at a time made the cold render 83% of wall time; the server
+// handles a small burst fine. Overridable with -tts-concurrency.
+const TTS_MAX_CONCURRENCY = 4
+
 // Drawing style names (switch via style: and style:blackboard).
 const (
 	STYLE_WHITEBOARD = "whiteboard"

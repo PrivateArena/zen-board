@@ -433,8 +433,12 @@ func handleCompareEvent(e *Engine, frameNum int, ev model.FrameEvent, buf *image
 	leftDest := image.Rect(0, 0, halfW, canvasH)
 	rightDest := image.Rect(halfW, 0, canvasW, canvasH)
 
-	scaledLeft := scaleImageFill(leftImg, halfW, canvasH)
-	scaledRight := scaleImageFill(rightImg, halfW, canvasH)
+	scaledLeft := e.cachedDerived(scaleKey("cmpfill", ev.CompareLeft, halfW, canvasH), func() image.Image {
+		return scaleImageFill(leftImg, halfW, canvasH)
+	})
+	scaledRight := e.cachedDerived(scaleKey("cmpfill", ev.CompareRight, halfW, canvasH), func() image.Image {
+		return scaleImageFill(rightImg, halfW, canvasH)
+	})
 
 	bg := ResolveStyleBg(style)
 
@@ -459,21 +463,29 @@ func handleCompareEvent(e *Engine, frameNum int, ev model.FrameEvent, buf *image
 	draw.Draw(buf, image.Rect(halfW-borderW/2, 0, halfW+borderW/2, canvasH), image.NewUniform(colBorder), image.Point{}, draw.Over)
 
 	if ev.LabelLeft != "" {
-		drawCompareLabel(buf, ev.LabelLeft, 40, canvasH-80, true, style, visibility)
+		drawCompareLabel(e, buf, ev.LabelLeft, 40, canvasH-80, true, style, visibility)
 	}
 	if ev.LabelRight != "" {
-		drawCompareLabel(buf, ev.LabelRight, halfW+40, canvasH-80, false, style, visibility)
+		drawCompareLabel(e, buf, ev.LabelRight, halfW+40, canvasH-80, false, style, visibility)
 	}
 }
 
-func drawCompareLabel(buf *image.RGBA, text string, x, y int, isLeft bool, style string, visibility float64) {
+func drawCompareLabel(e *Engine, buf *image.RGBA, text string, x, y int, isLeft bool, style string, visibility float64) {
 	colText := ResolveStyleTextColor(style)
 	colBg := ResolveStyleBgColor(style)
 	colText = ApplyAlpha(colText, visibility)
 	colBg = ApplyAlpha(colBg, visibility)
 
-	txtImg, err := RenderText(text, constant.FONT_SANS, 28, true, colText)
-	if err != nil {
+	// The label text is a pure function of (content, colour); the compare panel
+	// holds the same labels for hundreds of frames, so rasterise once.
+	txtImg := e.cachedDerived(textKey("cmp_label", text, constant.FONT_SANS, 28, true, rgbaKey(colText)), func() image.Image {
+		img, err := RenderText(text, constant.FONT_SANS, 28, true, colText)
+		if err != nil {
+			return nil
+		}
+		return img
+	})
+	if txtImg == nil {
 		return
 	}
 
@@ -510,7 +522,9 @@ func handleOverlayEvent(e *Engine, frameNum int, ev model.FrameEvent, buf *image
 		ox, oy, ow, oh = model.GetPresetLayout(preset, canvasW, canvasH)
 	}
 
-	scaled := scaleImage(img, ow, oh)
+	scaled := e.cachedDerived(scaleKey("overlay", ev.TargetImage, ow, oh), func() image.Image {
+		return scaleImage(img, ow, oh)
+	})
 	destRect := image.Rect(ox, oy, ox+ow, oy+oh)
 
 	DrawWithMask(buf, destRect, scaled, ev.Opacity*visibility)
@@ -547,8 +561,16 @@ func handleCounterEvent(e *Engine, frameNum int, ev model.FrameEvent, buf *image
 	canvasH := buf.Bounds().Dy()
 	cx, cy, cw, ch := model.GetPresetLayout(ev.ZoomFocus, canvasW, canvasH)
 
-	txtImg, err := RenderText(text, constant.FONT_SANS, 72, true, colText)
-	if err != nil {
+	// One raster per (value, colour): the counting animation changes the value
+	// every frame, but the held tail reuses a single entry.
+	txtImg := e.cachedDerived(textKey("counter", text, constant.FONT_SANS, 72, true, rgbaKey(colText)), func() image.Image {
+		img, err := RenderText(text, constant.FONT_SANS, 72, true, colText)
+		if err != nil {
+			return nil
+		}
+		return img
+	})
+	if txtImg == nil {
 		return
 	}
 

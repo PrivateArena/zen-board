@@ -1,0 +1,127 @@
+[
+  {
+    "Text": "",
+    "Actions": [
+      {
+        "Tag": "banner:\"IT WEDGES\":\"Nobody: ... absolutely nobody:\"",
+        "WordIndex": 0,
+        "X": 0,
+        "Y": 0,
+        "W": 0,
+        "H": 0,
+        "TriggerAfterWord": false,
+        "AssetVariant": null
+      }
+    ]
+  },
+  {
+    "Text": "Here is the setup.",
+    "Actions": [
+      {
+        "Tag": "zoom:reset",
+        "WordIndex": 4,
+        "X": 0,
+        "Y": 0,
+        "W": 0,
+        "H": 0,
+        "TriggerAfterWord": false,
+        "AssetVariant": null
+      },
+      {
+        "Tag": "pyramids:LH",
+        "WordIndex": 4,
+        "X": 0,
+        "Y": 0,
+        "W": 0,
+        "H": 0,
+        "TriggerAfterWord": false,
+        "AssetVariant": {}
+      }
+    ]
+  },
+  {
+    "Text": "And here is the punchline, at full size.",
+    "Actions": [
+      {
+        "Tag": "slide:city:center:pop",
+        "WordIndex": 0,
+        "X": 0,
+        "Y": 0,
+        "W": 0,
+        "H": 0,
+        "TriggerAfterWord": false,
+        "AssetVariant": null
+      }
+    ]
+  },
+  {
+    "Text": "",
+    "Actions": [
+      {
+        "Tag": "zoom:reset",
+        "WordIndex": 0,
+        "X": 0,
+        "Y": 0,
+        "W": 0,
+        "H": 0,
+        "TriggerAfterWord": false,
+        "AssetVariant": null
+      },
+      {
+        "Tag": "text:\"NO WAY\":center:sans:110:bold",
+        "WordIndex": 0,
+        "X": 0,
+        "Y": 0,
+        "W": 0,
+        "H": 0,
+        "TriggerAfterWord": false,
+        "AssetVariant": null
+      },
+      {
+        "Tag": "highlight:600,300,700,400:pulse:2",
+        "WordIndex": 0,
+        "X": 0,
+        "Y": 0,
+        "W": 0,
+        "H": 0,
+        "TriggerAfterWord": false,
+        "AssetVariant": null
+      }
+    ]
+  },
+  {
+    "Text": "Back to the robot, who saw it coming.",
+    "Actions": [
+      {
+        "Tag": "transition:fade-black:0.5",
+        "WordIndex": 0,
+        "X": 0,
+        "Y": 0,
+        "W": 0,
+        "H": 0,
+        "TriggerAfterWord": false,
+        "AssetVariant": null
+      },
+      {
+        "Tag": "clear",
+        "WordIndex": 8,
+        "X": 0,
+        "Y": 0,
+        "W": 0,
+        "H": 0,
+        "TriggerAfterWord": false,
+        "AssetVariant": null
+      },
+      {
+        "Tag": "robot:center",
+        "WordIndex": 8,
+        "X": 0,
+        "Y": 0,
+        "W": 0,
+        "H": 0,
+        "TriggerAfterWord": false,
+        "AssetVariant": {}
+      }
+    ]
+  }
+]

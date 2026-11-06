@@ -1,0 +1,6 @@
+[chapter:"Setup"]Every explainer starts with the world. [zoom:reset][draw:world:LH]
+Then we zoom in. [zoom:LH] A modern city sits right next to it. [draw:city]
+[chapter:"Compare"]The teaching happens side by side. [compare:city:pyramids:"Modern":"Ancient"]
+Which one is older? [highlight:200,120,600,400:circle:2]
+[clear]
+[chapter:"Takeaway"]The camera pulls back for the point. [zoom:reset] [text:"Older than it looks":center:sans:64:bold]

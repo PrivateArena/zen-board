@@ -1,0 +1,5 @@
+[banner:"IT WEDGES":"Nobody: ... absolutely nobody:"]
+Here is the setup. [zoom:reset][draw:pyramids:LH]
+[slide:city:center:pop] And here is the punchline, at full size.
+[zoom:reset] [text:"NO WAY":center:sans:110:bold] [highlight:600,300,700,400:pulse:2]
+[transition:fade-black:0.5] Back to the robot, who saw it coming. [clear][draw:robot:center]

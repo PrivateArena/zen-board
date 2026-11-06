@@ -3,6 +3,7 @@ package builder
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"image"
 	"image/color"
@@ -15,6 +16,7 @@ import (
 	"strings"
 	"zen-board/internal/assets"
 	"zen-board/internal/constant"
+	"zen-board/internal/diag"
 	"zen-board/internal/model"
 	"zen-board/internal/render"
 	"zen-board/internal/svg"
@@ -51,6 +53,9 @@ type TimelineCompilation struct {
 	StyleKeyframes []StyleKeyframe
 	Chapters       []ChapterMarker
 	SubtitleEvents []model.SubtitleEvent
+	// Findings collects compile-time diagnostics (malformed tags, unknown
+	// keywords, missing assets). Warnings never block; errors do.
+	Findings *diag.Report
 }
 
 // zoomInterval is a camera-transition window in frames during which draw
@@ -82,6 +87,34 @@ type timelineCompiler struct {
 	colWidth      int
 	rowHeight     int
 	zoomIntervals []zoomInterval
+
+	// findings accumulates diagnostics raised while compiling this timeline.
+	findings *diag.Report
+	// idCounters back the deterministic per-compile default id= values.
+	idCounters map[string]int
+}
+
+// record adds a compile-time finding, attributed to the source line of the
+// action that produced it when the parser supplied one.
+func (c *timelineCompiler) record(f diag.Finding) {
+	if c.findings == nil {
+		c.findings = &diag.Report{}
+	}
+	if f.Stage == "" {
+		f.Stage = "compile"
+	}
+	c.findings.Add(f)
+}
+
+// nextID returns the deterministic fallback identity for an event kind, e.g.
+// "draw#3". Counters are per-compile, so the same script always yields the
+// same ids.
+func (c *timelineCompiler) nextID(kind string) string {
+	if c.idCounters == nil {
+		c.idCounters = map[string]int{}
+	}
+	c.idCounters[kind]++
+	return fmt.Sprintf("%s#%d", kind, c.idCounters[kind])
 }
 
 func CompileTimeline(conf *model.Project, allWordTimings []model.WordTiming, pLines []model.ProcessedLine, exactDuration float64, audioTmp string) (*TimelineCompilation, error) {
@@ -90,7 +123,13 @@ func CompileTimeline(conf *model.Project, allWordTimings []model.WordTiming, pLi
 	if err := c.validateAssets(); err != nil {
 		return nil, err
 	}
-	return c.result(), nil
+	comp := c.result()
+	// Until the check verb owns the presentation layer, keep findings visible on
+	// the log channel the pipeline already uses.
+	for _, f := range comp.Findings.Sorted() {
+		log.Printf("%s", f.LegacyOrString())
+	}
+	return comp, nil
 }
 
 func newTimelineCompiler(conf *model.Project, allWordTimings []model.WordTiming, pLines []model.ProcessedLine, exactDuration float64, audioTmp string) *timelineCompiler {
@@ -110,6 +149,8 @@ func newTimelineCompiler(conf *model.Project, allWordTimings []model.WordTiming,
 		marginY:          marginY,
 		colWidth:         (conf.Width - 2*marginX) / 3,
 		rowHeight:        (conf.Height - 2*marginY) / 2,
+		findings:         &diag.Report{},
+		idCounters:       map[string]int{},
 	}
 	c.collectZoomIntervals(pLines)
 	return c
@@ -178,7 +219,17 @@ func (c *timelineCompiler) processAction(pl *model.ProcessedLine, action *model.
 				triggerTime = c.allWordTimings[triggerWordIdx].Start
 			}
 		} else {
-			log.Printf("Warning: WordIndex %d OOB for line starting at %.2fs", action.WordIndex, pl.StartTime)
+			c.record(diag.Finding{
+				Code:     diag.W0004,
+				Severity: diag.SeverityWarning,
+				Stage:    "compile",
+				File:     c.sourceName(action),
+				Line:     action.SrcLine,
+				Col:      action.SrcCol,
+				Snippet:  action.SrcRaw,
+				Message:  fmt.Sprintf("trigger word %d is outside the word timings of the line starting at %.2fs", action.WordIndex, pl.StartTime),
+				FixHint:  "move the tag inside the sentence so it follows a real word",
+			})
 		}
 	}
 
@@ -189,7 +240,7 @@ func (c *timelineCompiler) processAction(pl *model.ProcessedLine, action *model.
 	actionTag := action.Tag
 	preset := ""
 	if !isSpecialAction(action.Tag) {
-		parts := strings.Split(actionTag, ":")
+		parts := tagParts(actionTag)
 		if len(parts) > 1 {
 			if dur, err := strconv.ParseFloat(parts[len(parts)-1], 64); err == nil {
 				revealDuration = dur
@@ -211,8 +262,11 @@ func (c *timelineCompiler) processAction(pl *model.ProcessedLine, action *model.
 	if !isSpecialAction(action.Tag) || strings.HasPrefix(actionTag, constant.TAG_GEN) || strings.HasPrefix(actionTag, constant.TAG_TEXT) {
 		startFrame = c.adjustForZoom(rawStartFrame)
 	}
+	if action.RevealDuration > 0 {
+		revealDuration = action.RevealDuration
+	}
 
-	c.dispatch(&actionContext{
+	ctx := &actionContext{
 		pl:             pl,
 		action:         action,
 		triggerTime:    triggerTime,
@@ -222,7 +276,83 @@ func (c *timelineCompiler) processAction(pl *model.ProcessedLine, action *model.
 		actionTag:      actionTag,
 		preset:         preset,
 		revealDuration: revealDuration,
-	})
+	}
+	if err := c.dispatch(ctx); err != nil {
+		c.recordArity(ctx, err)
+	}
+	c.stampEvents(ctx)
+}
+
+// stampEvents attributes every event this one action produced - the reveal and
+// its persistence partner are one logical element - with the action's source
+// position, reveal window and identity.
+//
+// It stamps whatever carries no attribution yet, rather than a slice tail index:
+// the cut directives ([clear], [erase:*], [transition:]) rebuild the event slice
+// and then append their marker, so an index captured before dispatch can point
+// past the events that need stamping.
+func (c *timelineCompiler) stampEvents(ctx *actionContext) {
+	if ctx.action.SrcLine == 0 && ctx.action.SrcCol == 0 {
+		// Compiled without a parsed script (unit tests, programmatic timelines):
+		// invent no identity, so the golden event lists stay byte-identical.
+		return
+	}
+	pending := false
+	for i := range c.timeline.Events {
+		if c.timeline.Events[i].SrcLine == 0 && c.timeline.Events[i].SrcCol == 0 {
+			pending = true
+			break
+		}
+	}
+	if !pending {
+		return // the action emitted nothing
+	}
+	id := ctx.action.ID
+	if id == "" {
+		id = c.nextID(ctx.kind())
+	}
+	for i := range c.timeline.Events {
+		ev := &c.timeline.Events[i]
+		if ev.SrcLine != 0 || ev.SrcCol != 0 {
+			continue
+		}
+		ev.SrcLine = ctx.action.SrcLine
+		ev.SrcCol = ctx.action.SrcCol
+		if ev.RevealDuration == 0 {
+			ev.RevealDuration = ctx.revealDuration
+		}
+		if ev.ID == "" {
+			ev.ID = id
+		}
+	}
+}
+
+// recordArity turns a handler's errArity into an E0009 finding. Any other
+// error class is reported as a generic compile finding.
+func (c *timelineCompiler) recordArity(ctx *actionContext, err error) {
+	f := diag.Finding{Stage: "compile", File: c.sourceName(ctx.action), Line: ctx.action.SrcLine, Col: ctx.action.SrcCol}
+	var ar errArity
+	if errors.As(err, &ar) {
+		f.Code = diag.E0009
+		f.Severity = diag.SeverityOf(diag.E0009)
+		f.Message = ar.Error()
+		f.FixHint = ar.fixHint
+	} else {
+		f.Code = diag.E0004
+		f.Severity = diag.SeverityOf(diag.E0004)
+		f.Message = err.Error()
+	}
+	f.Snippet = ctx.action.Tag
+	c.record(f)
+}
+
+// sourceName labels findings with the script the action came from, falling back
+// to the configured path while older call sites carry no source metadata.
+func (c *timelineCompiler) sourceName(action *model.DrawAction) string {
+	if action.SrcPath != "" {
+		return action.SrcPath
+	}
+	return c.conf.ScriptPath
 }
 
 // validateAssets checks that every referenced asset exists on disk before
@@ -272,7 +402,9 @@ func (c *timelineCompiler) validateAssets() error {
 		if entry, ok := assetMap[ev.TargetImage]; ok {
 			assetPath = filepath.Join(c.conf.AssetsDir, entry.File)
 			if entry.HasBg {
-				log.Printf("Warning: Asset %q is marked as having a background (has_bg: true). It is recommended to run background removal processing first.", ev.TargetImage)
+				c.record(assetFinding(diag.W0005, ev,
+					fmt.Sprintf("asset %q is indexed with has_bg: true, so its rectangle carries a background", ev.TargetImage),
+					"run `zen-board assets process-bg` first"))
 			}
 		} else {
 			assetPath = filepath.Join(c.conf.AssetsDir, ev.TargetImage+".png")
@@ -292,7 +424,9 @@ func (c *timelineCompiler) validateAssets() error {
 			if _, hasAsset := assetMap[ev.TargetImage]; !hasAsset {
 				assetPath := filepath.Join(c.conf.AssetsDir, ev.TargetImage+".png")
 				if _, err := os.Stat(assetPath); os.IsNotExist(err) {
-					log.Printf("Warning: [erase:%s] erasing an asset that was not placed on screen; check asset name", ev.TargetImage)
+					c.record(assetFinding(diag.W0006, ev,
+						fmt.Sprintf("[erase:%s] erases an asset that was never placed on screen", ev.TargetImage),
+						"check the asset name, or erase the element that is actually on screen"))
 				}
 			}
 		}
@@ -309,6 +443,7 @@ func (c *timelineCompiler) result() *TimelineCompilation {
 		StyleKeyframes: c.styleKeyframes,
 		Chapters:       c.chapters,
 		SubtitleEvents: c.subtitleEvents,
+		Findings:       c.findings,
 	}
 }
 
@@ -376,7 +511,17 @@ func GeneratePaintAsset(prompt string) (image.Image, error) {
 	return img, err
 }
 
-func PrepareAssets(conf *model.Project, engine *render.Engine, timeline *model.Timeline, textJobs []TextRenderJob, genJobs []GenRenderJob) error {
+// PrepareAssets loads and rasterises everything the timeline references. Findings
+// are accumulated in `findings` when the caller passes one (so `render` can report
+// them), and fall back to the log channel when it does not.
+func PrepareAssets(conf *model.Project, engine *render.Engine, timeline *model.Timeline, textJobs []TextRenderJob, genJobs []GenRenderJob, findings *diag.Report) error {
+	warn := func(f diag.Finding) {
+		if findings == nil {
+			log.Printf("%s", f.LegacyOrString())
+			return
+		}
+		findings.Add(f)
+	}
 	assetIndex, _ := assets.LoadIndex(conf.AssetsDir)
 	assetMap := make(map[string]assets.AssetEntry)
 	if assetIndex != nil {
@@ -405,9 +550,12 @@ func PrepareAssets(conf *model.Project, engine *render.Engine, timeline *model.T
 				} else {
 					assetPath = filepath.Join(conf.AssetsDir, imgID+".png")
 				}
-				err := engine.LoadAsset(imgID, assetPath)
-				if err != nil {
-					log.Printf("Warning: Could not load compare asset %s: %v", imgID, err)
+				if err := engine.LoadAsset(imgID, assetPath); err != nil {
+					warn(diag.Finding{
+						Code: diag.W0003, Severity: diag.SeverityWarning, Stage: "prepare",
+						Message: fmt.Sprintf("compare asset %q could not be loaded: %v", imgID, err),
+						FixHint: "check the file exists and is a decodable image",
+					})
 				}
 			}
 			continue
@@ -433,9 +581,10 @@ func PrepareAssets(conf *model.Project, engine *render.Engine, timeline *model.T
 			assetPath = filepath.Join(conf.AssetsDir, ev.TargetImage+".png")
 		}
 
-		err := engine.LoadAsset(ev.TargetImage, assetPath)
-		if err != nil {
-			log.Printf("Warning: Could not load asset %s: %v", ev.TargetImage, err)
+		if err := engine.LoadAsset(ev.TargetImage, assetPath); err != nil {
+			warn(assetFinding(diag.W0003, ev,
+				fmt.Sprintf("asset %q could not be loaded: %v", ev.TargetImage, err),
+				"check the file exists and is a decodable image"))
 		}
 	}
 
@@ -494,7 +643,9 @@ func PrepareAssets(conf *model.Project, engine *render.Engine, timeline *model.T
 		}
 		img, err := svg.RasterizeSVG(rasterXML, ev.Width, ev.Height, cfg)
 		if err != nil {
-			log.Printf("Warning: Could not rasterize SVG %s: %v", ev.TargetImage, err)
+			warn(assetFinding(diag.W0003, *ev,
+				fmt.Sprintf("SVG asset %q could not be rasterised: %v", ev.TargetImage, err),
+				"check the SVG parses and its layout box has a positive size"))
 			continue
 		}
 
@@ -512,7 +663,11 @@ func PrepareAssets(conf *model.Project, engine *render.Engine, timeline *model.T
 		}
 		img, err := render.RenderText(job.Content, job.FontFamily, job.FontSize, job.IsBold, textColor)
 		if err != nil {
-			log.Printf("Warning: failed to render text %q: %v", job.Content, err)
+			warn(diag.Finding{
+				Code: diag.W0008, Severity: diag.SeverityWarning, Stage: "prepare",
+				Message: fmt.Sprintf("text %q failed to rasterise: %v", job.Content, err),
+				FixHint: "check the font preset and that the content is not empty",
+			})
 			continue
 		}
 		engine.RegisterAsset(job.AssetID, img)
@@ -523,7 +678,11 @@ func PrepareAssets(conf *model.Project, engine *render.Engine, timeline *model.T
 		fmt.Printf("Generating paint asset for prompt %q...\n", job.Prompt)
 		img, err := GeneratePaintAsset(job.Prompt)
 		if err != nil {
-			log.Printf("Warning: Paint generation failed for %q: %v. Using transparent 1x1 placeholder.", job.Prompt, err)
+			warn(diag.Finding{
+				Code: diag.W0007, Severity: diag.SeverityWarning, Stage: "prepare",
+				Message: fmt.Sprintf("paint generation failed for %q: %v", job.Prompt, err),
+				FixHint: "is zen-lights reachable? a transparent placeholder stands in for this asset",
+			})
 			placeholder := image.NewRGBA(image.Rect(0, 0, 1, 1))
 			engine.RegisterAsset(job.AssetID, placeholder)
 		} else {
@@ -532,4 +691,20 @@ func PrepareAssets(conf *model.Project, engine *render.Engine, timeline *model.T
 	}
 
 	return nil
+}
+
+// assetFinding builds a finding attached to an already-compiled event, so a
+// preparation-stage problem still points at the line of script that placed it.
+func assetFinding(code string, ev model.FrameEvent, message, hint string) diag.Finding {
+	return diag.Finding{
+		Code:      code,
+		Severity:  diag.SeverityOf(code),
+		Stage:     "prepare",
+		Line:      ev.SrcLine,
+		Col:       ev.SrcCol,
+		Snippet:   ev.TargetImage,
+		Message:   message,
+		FixHint:   hint,
+		LegacyMsg: "Warning: " + message,
+	}
 }

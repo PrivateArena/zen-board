@@ -2,13 +2,28 @@ package builder
 
 import (
 	"fmt"
-	"log"
 	"strconv"
 	"strings"
 
 	"zen-board/internal/constant"
+	"zen-board/internal/diag"
 	"zen-board/internal/model"
 )
+
+// errArity is returned by a handler whose tag carries fewer parts than it can
+// safely index. Historically [arrow:TL] and [compare:onlyone] panicked on the
+// out-of-range read; the compiler converts this into an E0009 finding and drops
+// the action.
+type errArity struct {
+	tag     string
+	got     int
+	min     int
+	fixHint string
+}
+
+func (e errArity) Error() string {
+	return fmt.Sprintf("%q expects at least %d argument(s), got %d", e.tag, e.min, e.got)
+}
 
 // actionContext carries the values shared by every action-tag handler that
 // CompileTimeline computes once per action (trigger time, frame bounds, parsed
@@ -20,17 +35,28 @@ type actionContext struct {
 	rawStartFrame  int
 	startFrame     int
 	endFrame       int
+	route          string // the handler dispatch chose; recorded for the DSL coverage test
 	actionTag      string
 	preset         string
 	revealDuration float64
+}
+
+// kind names the action family used to build a deterministic fallback identity.
+// It reads the route dispatch chose, so an identity can never disagree with the
+// handler that ran; TargetImage cannot serve - it is an asset id for draws and a
+// synthesised key for everything else.
+func (ctx *actionContext) kind() string {
+	if ctx.route != "" {
+		return ctx.route
+	}
+	return "event"
 }
 
 // isSpecialAction reports whether the raw action tag belongs to the set of
 // reserved command prefixes. Special actions bypass the generic
 // "<asset>:<preset>:<duration>" tag parsing performed for draw actions.
 func isSpecialAction(tag string) bool {
-	specialPrefixes := []string{constant.TAG_WAIT, constant.TAG_ZOOM, constant.TAG_STYLE, constant.TAG_CHAPTER, constant.TAG_SFX, constant.TAG_SUBTITLE, constant.TAG_TEXT, constant.TAG_ERASE, constant.TAG_MOVE, constant.TAG_GEN, constant.TAG_SLIDE, constant.TAG_BANNER, constant.TAG_WATERMARK, constant.TAG_ARROW, constant.TAG_HIGHLIGHT, constant.TAG_COMPARE, constant.TAG_TRANSITION, constant.TAG_OVERLAY, constant.TAG_COUNTER}
-	for _, prefix := range specialPrefixes {
+	for _, prefix := range specialActionPrefixes() {
 		if strings.HasPrefix(tag, prefix) {
 			return true
 		}
@@ -38,57 +64,91 @@ func isSpecialAction(tag string) bool {
 	return false
 }
 
-// dispatch routes an action tag to its dedicated handler. The case order
-// mirrors the original if/continue chain and is significant: the exact-match
-// directives (erase:*, clear) must be evaluated before their prefix siblings.
-func (c *timelineCompiler) dispatch(ctx *actionContext) {
+// specialActionPrefixes is the reserved command-prefix vocabulary, in the order
+// the dispatch chain tests it.
+func specialActionPrefixes() []string {
+	return []string{constant.TAG_WAIT, constant.TAG_ZOOM, constant.TAG_STYLE, constant.TAG_CHAPTER, constant.TAG_SFX, constant.TAG_SUBTITLE, constant.TAG_TEXT, constant.TAG_ERASE, constant.TAG_MOVE, constant.TAG_GEN, constant.TAG_SLIDE, constant.TAG_BANNER, constant.TAG_WATERMARK, constant.TAG_ARROW, constant.TAG_HIGHLIGHT, constant.TAG_COMPARE, constant.TAG_TRANSITION, constant.TAG_OVERLAY, constant.TAG_COUNTER}
+}
+
+// dispatch routes an action tag to its dedicated handler and records the route it
+// chose on the context, so the DSL coverage test can compare the vocabulary the
+// table declares against the vocabulary the compiler actually routes.
+//
+// The case order mirrors the original if/continue chain and is significant: the
+// exact-match directives (erase:*, clear) must be evaluated before their prefix
+// siblings. A handler returns errArity when the tag is malformed; every other
+// outcome is a successful (possibly empty) compile.
+func (c *timelineCompiler) dispatch(ctx *actionContext) error {
 	tag := ctx.action.Tag
 	switch {
 	case strings.HasPrefix(tag, constant.TAG_WAIT):
+		ctx.route = "wait"
 		// compile-time-only directive; nothing is emitted to the timeline
 	case strings.HasPrefix(tag, constant.TAG_ZOOM):
+		ctx.route = "zoom"
 		c.handleZoom(ctx)
 	case strings.HasPrefix(tag, constant.TAG_STYLE):
+		ctx.route = "style"
 		c.handleStyle(ctx)
 	case strings.HasPrefix(tag, constant.TAG_CHAPTER):
+		ctx.route = "chapter"
 		c.handleChapter(ctx)
 	case strings.HasPrefix(tag, constant.TAG_SUBTITLE):
+		ctx.route = "subtitle"
 		c.handleSubtitle(ctx)
 	case strings.HasPrefix(tag, constant.TAG_SFX):
+		ctx.route = "sfx"
 		// compile-time-only directive; nothing is emitted to the timeline
 	case strings.HasPrefix(tag, constant.TAG_TEXT):
+		ctx.route = "text"
 		c.handleText(ctx)
 	case tag == constant.TAG_ERASE_ALL:
+		ctx.route = "erase"
 		c.handleEraseAll(ctx)
 	case strings.HasPrefix(tag, constant.TAG_ERASE):
+		ctx.route = "erase"
 		c.handleErase(ctx)
 	case strings.HasPrefix(tag, constant.TAG_MOVE):
+		ctx.route = "move"
 		c.handleMove(ctx)
 	case strings.HasPrefix(tag, constant.TAG_GEN):
+		ctx.route = "gen"
 		c.handleGen(ctx)
 	case tag == constant.TAG_CLEAR:
+		ctx.route = "clear"
 		c.handleClear(ctx)
 	case strings.HasPrefix(tag, constant.TAG_SLIDE):
+		ctx.route = "slide"
 		c.handleSlide(ctx)
 	case strings.HasPrefix(tag, constant.TAG_BANNER):
+		ctx.route = "banner"
 		c.handleBanner(ctx)
 	case strings.HasPrefix(tag, constant.TAG_WATERMARK):
+		ctx.route = "watermark"
 		c.handleWatermark(ctx)
 	case strings.HasPrefix(tag, constant.TAG_ARROW):
-		c.handleArrow(ctx)
+		ctx.route = "arrow"
+		return c.handleArrow(ctx)
 	case strings.HasPrefix(tag, constant.TAG_HIGHLIGHT):
+		ctx.route = "highlight"
 		c.handleHighlight(ctx)
 	case strings.HasPrefix(tag, constant.TAG_COMPARE):
-		c.handleCompare(ctx)
+		ctx.route = "compare"
+		return c.handleCompare(ctx)
 	case strings.HasPrefix(tag, constant.TAG_OVERLAY):
+		ctx.route = "overlay"
 		c.handleOverlay(ctx)
 	case strings.HasPrefix(tag, constant.TAG_TRANSITION):
+		ctx.route = "transition"
 		c.handleTransition(ctx)
 	case strings.HasPrefix(tag, constant.TAG_COUNTER):
+		ctx.route = "counter"
 		c.handleCounter(ctx)
 	default:
+		ctx.route = "draw"
 		c.handleDraw(ctx)
 	}
+	return nil
 }
 
 func (c *timelineCompiler) handleZoom(ctx *actionContext) {
@@ -146,7 +206,7 @@ func (c *timelineCompiler) handleText(ctx *actionContext) {
 		fontSize := 48.0
 		fontWeight := "regular"
 
-		parts := strings.Split(remainder, ":")
+		parts := tagParts(remainder)
 		if len(parts) > 1 {
 			preset = parts[1]
 		}
@@ -266,14 +326,24 @@ func (c *timelineCompiler) handleErase(ctx *actionContext) {
 		}
 	}
 	if !found {
-		log.Printf("Warning: [erase:%s] cannot find active asset to erase; skipping", targetAsset)
+		c.record(diag.Finding{
+			Code:      diag.W0006,
+			Severity:  diag.SeverityWarning,
+			Stage:     "compile",
+			Line:      ctx.action.SrcLine,
+			Col:       ctx.action.SrcCol,
+			Snippet:   ctx.action.SrcRaw,
+			Message:   fmt.Sprintf("[erase:%s] found no active layer to erase; the directive was skipped", targetAsset),
+			FixHint:   "erase the asset id that is on screen, or use [clear] / [erase:*]",
+			LegacyMsg: fmt.Sprintf("Warning: [erase:%s] cannot find active asset to erase; skipping", targetAsset),
+		})
 		return
 	}
 	c.timeline.Events = append(c.timeline.Events, eraseEvent)
 }
 
 func (c *timelineCompiler) handleMove(ctx *actionContext) {
-	parts := strings.Split(strings.TrimPrefix(ctx.action.Tag, constant.TAG_MOVE), ":")
+	parts := tagParts(strings.TrimPrefix(ctx.action.Tag, constant.TAG_MOVE))
 	targetAsset := parts[0]
 	destPreset := ""
 	if len(parts) > 1 {
@@ -358,7 +428,7 @@ func (c *timelineCompiler) handleMove(ctx *actionContext) {
 
 func (c *timelineCompiler) handleGen(ctx *actionContext) {
 	rest := strings.TrimPrefix(ctx.action.Tag, constant.TAG_GEN)
-	parts := strings.Split(rest, ":")
+	parts := tagParts(rest)
 	prompt := parts[0]
 	preset := ""
 	if len(parts) > 1 {
@@ -438,7 +508,7 @@ func (c *timelineCompiler) handleClear(ctx *actionContext) {
 
 func (c *timelineCompiler) handleSlide(ctx *actionContext) {
 	rest := strings.TrimPrefix(ctx.action.Tag, constant.TAG_SLIDE)
-	parts := strings.Split(rest, ":")
+	parts := tagParts(rest)
 	asset := parts[0]
 	preset := ""
 	transition := constant.TRANSITION_NONE
@@ -495,7 +565,7 @@ func (c *timelineCompiler) handleSlide(ctx *actionContext) {
 
 func (c *timelineCompiler) handleBanner(ctx *actionContext) {
 	rest := strings.TrimPrefix(ctx.action.Tag, constant.TAG_BANNER)
-	parts := strings.Split(rest, ":")
+	parts := tagParts(rest)
 	title := ""
 	subtitle := ""
 	duration := 4.0
@@ -537,7 +607,7 @@ func (c *timelineCompiler) handleBanner(ctx *actionContext) {
 // bottom-right). The watermark persists for the entire video duration.
 func (c *timelineCompiler) handleWatermark(ctx *actionContext) {
 	rest := strings.TrimPrefix(ctx.action.Tag, constant.TAG_WATERMARK)
-	parts := strings.Split(rest, ":")
+	parts := tagParts(rest)
 	source := parts[0]
 	position := "TL"
 	if len(parts) > 1 {
@@ -561,9 +631,17 @@ func (c *timelineCompiler) handleWatermark(ctx *actionContext) {
 	})
 }
 
-func (c *timelineCompiler) handleArrow(ctx *actionContext) {
+func (c *timelineCompiler) handleArrow(ctx *actionContext) error {
 	rest := strings.TrimPrefix(ctx.action.Tag, constant.TAG_ARROW)
-	parts := strings.Split(rest, ":")
+	parts := tagParts(rest)
+	if len(parts) < 2 || parts[1] == "" {
+		return errArity{
+			tag:     "[" + constant.TAG_ARROW + "from:to[:style][:duration]]",
+			got:     len(parts),
+			min:     2,
+			fixHint: "give both endpoints, e.g. [arrow:TL:BR] or [arrow:@bot:@curve:curved:2]",
+		}
+	}
 	from := parts[0]
 	to := parts[1]
 	style := constant.ARROW_STRAIGHT
@@ -596,11 +674,12 @@ func (c *timelineCompiler) handleArrow(ctx *actionContext) {
 		ArrowStyle: style,
 		ZoomFocus:  c.currentZoomFocus,
 	})
+	return nil
 }
 
 func (c *timelineCompiler) handleHighlight(ctx *actionContext) {
 	rest := strings.TrimPrefix(ctx.action.Tag, constant.TAG_HIGHLIGHT)
-	parts := strings.Split(rest, ":")
+	parts := tagParts(rest)
 	region := parts[0]
 	style := constant.HIGHLIGHT_RECT
 	duration := 2.0
@@ -624,9 +703,17 @@ func (c *timelineCompiler) handleHighlight(ctx *actionContext) {
 	})
 }
 
-func (c *timelineCompiler) handleCompare(ctx *actionContext) {
+func (c *timelineCompiler) handleCompare(ctx *actionContext) error {
 	rest := strings.TrimPrefix(ctx.action.Tag, constant.TAG_COMPARE)
-	parts := strings.Split(rest, ":")
+	parts := tagParts(rest)
+	if len(parts) < 2 || parts[1] == "" {
+		return errArity{
+			tag:     "[" + constant.TAG_COMPARE + "left:right[:labelL][:labelR]]",
+			got:     len(parts),
+			min:     2,
+			fixHint: "give both sides, e.g. [compare:city:pyramids]",
+		}
+	}
 	left := parts[0]
 	right := parts[1]
 	lblLeft := ""
@@ -658,11 +745,12 @@ func (c *timelineCompiler) handleCompare(ctx *actionContext) {
 		LabelRight:   lblRight,
 		ZoomFocus:    c.currentZoomFocus,
 	})
+	return nil
 }
 
 func (c *timelineCompiler) handleOverlay(ctx *actionContext) {
 	rest := strings.TrimPrefix(ctx.action.Tag, constant.TAG_OVERLAY)
-	parts := strings.Split(rest, ":")
+	parts := tagParts(rest)
 	asset := parts[0]
 	opacity := 0.5
 	preset := constant.PRESET_FULLSCREEN
@@ -687,7 +775,7 @@ func (c *timelineCompiler) handleOverlay(ctx *actionContext) {
 
 func (c *timelineCompiler) handleTransition(ctx *actionContext) {
 	rest := strings.TrimPrefix(ctx.action.Tag, constant.TAG_TRANSITION)
-	parts := strings.Split(rest, ":")
+	parts := tagParts(rest)
 	tType := parts[0]
 	duration := 0.5
 	if len(parts) > 1 && parts[1] != "" {
@@ -724,7 +812,7 @@ func (c *timelineCompiler) handleTransition(ctx *actionContext) {
 
 func (c *timelineCompiler) handleCounter(ctx *actionContext) {
 	rest := strings.TrimPrefix(ctx.action.Tag, constant.TAG_COUNTER)
-	parts := strings.Split(rest, ":")
+	parts := tagParts(rest)
 	cStart := 0.0
 	cEnd := 0.0
 	duration := 2.0

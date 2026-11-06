@@ -1,0 +1,92 @@
+[
+  {
+    "Text": "Meet our guide.",
+    "Actions": [
+      {
+        "Tag": "funny_human_2d_comic_with_big_nose_fat_l:BR",
+        "WordIndex": 3,
+        "X": 0,
+        "Y": 0,
+        "W": 0,
+        "H": 0,
+        "TriggerAfterWord": false,
+        "AssetVariant": {}
+      }
+    ]
+  },
+  {
+    "Text": "Here is the city we are talking about.",
+    "Actions": [
+      {
+        "Tag": "zoom:LH",
+        "WordIndex": 8,
+        "X": 0,
+        "Y": 0,
+        "W": 0,
+        "H": 0,
+        "TriggerAfterWord": false,
+        "AssetVariant": null
+      },
+      {
+        "Tag": "city",
+        "WordIndex": 8,
+        "X": 0,
+        "Y": 0,
+        "W": 0,
+        "H": 0,
+        "TriggerAfterWord": false,
+        "AssetVariant": {}
+      }
+    ]
+  },
+  {
+    "Text": "Our guide reacts.",
+    "Actions": [
+      {
+        "Tag": "erase:funny_human_2d_comic_with_big_nose_fat_l",
+        "WordIndex": 3,
+        "X": 0,
+        "Y": 0,
+        "W": 0,
+        "H": 0,
+        "TriggerAfterWord": false,
+        "AssetVariant": null
+      },
+      {
+        "Tag": "comic_big_nose_fat_lung_screaming:BR",
+        "WordIndex": 3,
+        "X": 0,
+        "Y": 0,
+        "W": 0,
+        "H": 0,
+        "TriggerAfterWord": false,
+        "AssetVariant": {}
+      }
+    ]
+  },
+  {
+    "Text": "And now the payoff.",
+    "Actions": [
+      {
+        "Tag": "zoom:reset",
+        "WordIndex": 4,
+        "X": 0,
+        "Y": 0,
+        "W": 0,
+        "H": 0,
+        "TriggerAfterWord": false,
+        "AssetVariant": null
+      },
+      {
+        "Tag": "text:\"He agrees\":center:sans:56:bold",
+        "WordIndex": 4,
+        "X": 0,
+        "Y": 0,
+        "W": 0,
+        "H": 0,
+        "TriggerAfterWord": false,
+        "AssetVariant": null
+      }
+    ]
+  }
+]

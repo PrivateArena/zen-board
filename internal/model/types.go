@@ -21,24 +21,26 @@ type Project struct {
 	CameraEnabled     bool    `json:"camera_enabled"`
 	FreezeFrames      int     `json:"freeze_frames"`
 	TTSCacheDir       string  `json:"tts_cache_dir"`
+	TTSConcurrency    int     `json:"tts_concurrency"`
 }
 
 func NewDefaultProject() *Project {
 	return &Project{
-		AssetsDir:    "./assets",
-		OutputPath:   "output.mp4",
-		FPS:          30,
-		Width:        1920,
-		Height:       1080,
-		Cursor:       constant.CURSOR_HAND,
-		TTSAddr:      "http://localhost:5000",
-		Speed:        1.0,
-		HandTipX:     30,
-		HandTipY:     20,
-		Voice:        "am_adam",
-		BGMVolume:    0.05,
-		FreezeFrames: 60,
-		TTSCacheDir:  "/tmp/zen-board/tts",
+		AssetsDir:      "./assets",
+		OutputPath:     "output.mp4",
+		FPS:            30,
+		Width:          1920,
+		Height:         1080,
+		Cursor:         constant.CURSOR_HAND,
+		TTSAddr:        "http://localhost:5000",
+		Speed:          1.0,
+		HandTipX:       30,
+		HandTipY:       20,
+		Voice:          "am_adam",
+		BGMVolume:      0.05,
+		FreezeFrames:   60,
+		TTSCacheDir:    "/tmp/zen-board/tts",
+		TTSConcurrency: constant.TTS_MAX_CONCURRENCY,
 	}
 }
 
@@ -57,6 +59,21 @@ type DrawAction struct {
 	TriggerAfterWord bool              // trigger after word end instead of start
 	GenPrompt        string            // prompt for image generation
 	AssetVariant     map[string]string // SVG variant modifications: key=value pairs
+	// ID is the explicit id= identity from the tag; empty means the compiler
+	// derives a deterministic per-compile identity. Never stored in AssetVariant:
+	// that map is aliased between events and mutated during compile.
+	ID string
+	// Source location of the tag in the .zen file. Offsets are byte offsets into
+	// the raw script (SrcOffset/SrcLength); Line/Col are 1-based and are what an
+	// editor shows. All zero for actions built programmatically. Identity is
+	// carried as strings/ints only - never inside AssetVariant, which is aliased
+	// across events and mutated by extractCursor.
+	SrcPath   string
+	SrcOffset int
+	SrcLength int
+	SrcLine   int
+	SrcCol    int
+	SrcRaw    string
 }
 
 type WordTiming struct {
@@ -77,6 +94,14 @@ type FrameEvent struct {
 	Cursor        string // "hand", "magic_wand", "two_finger", ... ; empty defaults to "hand"
 	DestX, DestY  int    // destination for "move" events
 	ZoomFocus     string `json:"zoom_focus"`
+	// Identity and provenance. ID is set at compile time: id= from the tag, else a
+	// deterministic "<kind>#<n>" per compile. It is what @refs, [clear] survival and
+	// character state switching address. SrcLine/SrcCol point at the tag that
+	// produced the event. RevealDuration is the authored reveal window in seconds.
+	ID             string  `json:"id,omitempty"`
+	SrcLine        int     `json:"src_line,omitempty"`
+	SrcCol         int     `json:"src_col,omitempty"`
+	RevealDuration float64 `json:"reveal_duration,omitempty"`
 	// Slide-specific fields
 	Transition string // "none","fade","pop","slide-left","slide-right","slide-up","slide-down"
 	FitMode    string // "fit","fill","stretch"

@@ -1,0 +1,264 @@
+[
+  {
+    "Text": "",
+    "Actions": [
+      {
+        "Tag": "text:\"Zen-Board\":center:sans:72:bold",
+        "WordIndex": 0,
+        "X": 0,
+        "Y": 0,
+        "W": 0,
+        "H": 0,
+        "TriggerAfterWord": false,
+        "AssetVariant": null
+      }
+    ]
+  },
+  {
+    "Text": "Welcome to whiteboard mode.",
+    "Actions": [
+      {
+        "Tag": "chapter:\"Intro\"",
+        "WordIndex": 0,
+        "X": 0,
+        "Y": 0,
+        "W": 0,
+        "H": 0,
+        "TriggerAfterWord": false,
+        "AssetVariant": null
+      },
+      {
+        "Tag": "style:whiteboard",
+        "WordIndex": 0,
+        "X": 0,
+        "Y": 0,
+        "W": 0,
+        "H": 0,
+        "TriggerAfterWord": false,
+        "AssetVariant": null
+      },
+      {
+        "Tag": "robot:TL",
+        "WordIndex": 0,
+        "X": 0,
+        "Y": 0,
+        "W": 0,
+        "H": 0,
+        "TriggerAfterWord": false,
+        "AssetVariant": {}
+      }
+    ]
+  },
+  {
+    "Text": "",
+    "Actions": [
+      {
+        "Tag": "WAIT:1",
+        "WordIndex": 0,
+        "X": 0,
+        "Y": 0,
+        "W": 0,
+        "H": 0,
+        "TriggerAfterWord": false,
+        "AssetVariant": null
+      }
+    ]
+  },
+  {
+    "Text": "Welcome to blackboard mode.",
+    "Actions": [
+      {
+        "Tag": "chapter:\"Dynamic Text\"",
+        "WordIndex": 0,
+        "X": 0,
+        "Y": 0,
+        "W": 0,
+        "H": 0,
+        "TriggerAfterWord": false,
+        "AssetVariant": null
+      },
+      {
+        "Tag": "subtitle:top",
+        "WordIndex": 0,
+        "X": 0,
+        "Y": 0,
+        "W": 0,
+        "H": 0,
+        "TriggerAfterWord": false,
+        "AssetVariant": null
+      },
+      {
+        "Tag": "style:blackboard",
+        "WordIndex": 0,
+        "X": 0,
+        "Y": 0,
+        "W": 0,
+        "H": 0,
+        "TriggerAfterWord": false,
+        "AssetVariant": null
+      },
+      {
+        "Tag": "text:\"Hello Dynamic Text\":BL:sans:48:bold",
+        "WordIndex": 0,
+        "X": 0,
+        "Y": 0,
+        "W": 0,
+        "H": 0,
+        "TriggerAfterWord": false,
+        "AssetVariant": null
+      }
+    ]
+  },
+  {
+    "Text": "",
+    "Actions": [
+      {
+        "Tag": "WAIT:1",
+        "WordIndex": 0,
+        "X": 0,
+        "Y": 0,
+        "W": 0,
+        "H": 0,
+        "TriggerAfterWord": false,
+        "AssetVariant": null
+      }
+    ]
+  },
+  {
+    "Text": "Draw robot with magic wand cursor.",
+    "Actions": [
+      {
+        "Tag": "chapter:\"Magic Wand\"",
+        "WordIndex": 0,
+        "X": 0,
+        "Y": 0,
+        "W": 0,
+        "H": 0,
+        "TriggerAfterWord": false,
+        "AssetVariant": null
+      },
+      {
+        "Tag": "subtitle:off",
+        "WordIndex": 0,
+        "X": 0,
+        "Y": 0,
+        "W": 0,
+        "H": 0,
+        "TriggerAfterWord": false,
+        "AssetVariant": null
+      },
+      {
+        "Tag": "robot:TR",
+        "WordIndex": 0,
+        "X": 0,
+        "Y": 0,
+        "W": 0,
+        "H": 0,
+        "TriggerAfterWord": false,
+        "AssetVariant": {
+          "cursor": "magic_wand"
+        }
+      }
+    ]
+  },
+  {
+    "Text": "",
+    "Actions": [
+      {
+        "Tag": "WAIT:1",
+        "WordIndex": 0,
+        "X": 0,
+        "Y": 0,
+        "W": 0,
+        "H": 0,
+        "TriggerAfterWord": false,
+        "AssetVariant": null
+      }
+    ]
+  },
+  {
+    "Text": "Moving asset to bottom right.",
+    "Actions": [
+      {
+        "Tag": "chapter:\"Move \u0026 Erase\"",
+        "WordIndex": 0,
+        "X": 0,
+        "Y": 0,
+        "W": 0,
+        "H": 0,
+        "TriggerAfterWord": false,
+        "AssetVariant": null
+      },
+      {
+        "Tag": "move:robot:BR",
+        "WordIndex": 0,
+        "X": 0,
+        "Y": 0,
+        "W": 0,
+        "H": 0,
+        "TriggerAfterWord": false,
+        "AssetVariant": null
+      }
+    ]
+  },
+  {
+    "Text": "",
+    "Actions": [
+      {
+        "Tag": "WAIT:1",
+        "WordIndex": 0,
+        "X": 0,
+        "Y": 0,
+        "W": 0,
+        "H": 0,
+        "TriggerAfterWord": false,
+        "AssetVariant": null
+      }
+    ]
+  },
+  {
+    "Text": "Erasing the asset.",
+    "Actions": [
+      {
+        "Tag": "erase:robot",
+        "WordIndex": 0,
+        "X": 0,
+        "Y": 0,
+        "W": 0,
+        "H": 0,
+        "TriggerAfterWord": false,
+        "AssetVariant": null
+      }
+    ]
+  },
+  {
+    "Text": "",
+    "Actions": [
+      {
+        "Tag": "WAIT:1",
+        "WordIndex": 0,
+        "X": 0,
+        "Y": 0,
+        "W": 0,
+        "H": 0,
+        "TriggerAfterWord": false,
+        "AssetVariant": null
+      }
+    ]
+  },
+  {
+    "Text": "All done.",
+    "Actions": [
+      {
+        "Tag": "chapter:\"End\"",
+        "WordIndex": 0,
+        "X": 0,
+        "Y": 0,
+        "W": 0,
+        "H": 0,
+        "TriggerAfterWord": false,
+        "AssetVariant": null
+      }
+    ]
+  }
+]

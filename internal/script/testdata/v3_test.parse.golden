@@ -1,0 +1,418 @@
+[
+  {
+    "Text": "",
+    "Actions": [
+      {
+        "Tag": "text:\"Zen-Board V3\":center:sans:72:bold",
+        "WordIndex": 0,
+        "X": 0,
+        "Y": 0,
+        "W": 0,
+        "H": 0,
+        "TriggerAfterWord": false,
+        "AssetVariant": null
+      }
+    ]
+  },
+  {
+    "Text": "Welcome to the zen-board v3 roadmap demo. Today we're showcasing the new slideshow and overlay primitives.",
+    "Actions": null
+  },
+  {
+    "Text": "",
+    "Actions": [
+      {
+        "Tag": "clear",
+        "WordIndex": 0,
+        "X": 0,
+        "Y": 0,
+        "W": 0,
+        "H": 0,
+        "TriggerAfterWord": false,
+        "AssetVariant": null
+      }
+    ]
+  },
+  {
+    "Text": "",
+    "Actions": [
+      {
+        "Tag": "slide:pyramids:center:pop",
+        "WordIndex": 0,
+        "X": 0,
+        "Y": 0,
+        "W": 0,
+        "H": 0,
+        "TriggerAfterWord": false,
+        "AssetVariant": null
+      }
+    ]
+  },
+  {
+    "Text": "The new primitive lets you drop images instantly without the hand-drawn reveal.",
+    "Actions": [
+      {
+        "Tag": "chapter:\"Slideshow\"",
+        "WordIndex": 0,
+        "X": 0,
+        "Y": 0,
+        "W": 0,
+        "H": 0,
+        "TriggerAfterWord": false,
+        "AssetVariant": null
+      },
+      {
+        "Tag": "slide:pyramids:fullscreen:fade",
+        "WordIndex": 2,
+        "X": 0,
+        "Y": 0,
+        "W": 0,
+        "H": 0,
+        "TriggerAfterWord": false,
+        "AssetVariant": null
+      }
+    ]
+  },
+  {
+    "Text": "",
+    "Actions": [
+      {
+        "Tag": "chapter:\"Banner\"",
+        "WordIndex": 0,
+        "X": 0,
+        "Y": 0,
+        "W": 0,
+        "H": 0,
+        "TriggerAfterWord": false,
+        "AssetVariant": null
+      },
+      {
+        "Tag": "banner:\"Slide Primitive\":\"Instant image drop with transitions\"",
+        "WordIndex": 0,
+        "X": 0,
+        "Y": 0,
+        "W": 0,
+        "H": 0,
+        "TriggerAfterWord": false,
+        "AssetVariant": null
+      }
+    ]
+  },
+  {
+    "Text": "That's perfect for meme-talking style videos.",
+    "Actions": null
+  },
+  {
+    "Text": "Notice how this curved arrow draws attention to the hero image.",
+    "Actions": [
+      {
+        "Tag": "chapter:\"Annotations\"",
+        "WordIndex": 0,
+        "X": 0,
+        "Y": 0,
+        "W": 0,
+        "H": 0,
+        "TriggerAfterWord": false,
+        "AssetVariant": null
+      },
+      {
+        "Tag": "arrow:TL:BR:curved:0.5",
+        "WordIndex": 0,
+        "X": 0,
+        "Y": 0,
+        "W": 0,
+        "H": 0,
+        "TriggerAfterWord": false,
+        "AssetVariant": null
+      }
+    ]
+  },
+  {
+    "Text": "",
+    "Actions": [
+      {
+        "Tag": "highlight:100,200,400,150:pulse:2.0",
+        "WordIndex": 0,
+        "X": 0,
+        "Y": 0,
+        "W": 0,
+        "H": 0,
+        "TriggerAfterWord": false,
+        "AssetVariant": null
+      }
+    ]
+  },
+  {
+    "Text": "",
+    "Actions": [
+      {
+        "Tag": "compare:robot:world:\"Code World\":\"Real World\"",
+        "WordIndex": 0,
+        "X": 0,
+        "Y": 0,
+        "W": 0,
+        "H": 0,
+        "TriggerAfterWord": false,
+        "AssetVariant": null
+      }
+    ]
+  },
+  {
+    "Text": "The highlight primitive creates attention boxes with animated marching ants or pulsing rings.",
+    "Actions": null
+  },
+  {
+    "Text": "Lower thirds slide in and out automatically:",
+    "Actions": [
+      {
+        "Tag": "banner:\"Lower Third Demo\":\"Animated name card\":4.0:FF4444",
+        "WordIndex": 7,
+        "X": 0,
+        "Y": 0,
+        "W": 0,
+        "H": 0,
+        "TriggerAfterWord": false,
+        "AssetVariant": null
+      }
+    ]
+  },
+  {
+    "Text": "",
+    "Actions": [
+      {
+        "Tag": "WAIT:1",
+        "WordIndex": 0,
+        "X": 0,
+        "Y": 0,
+        "W": 0,
+        "H": 0,
+        "TriggerAfterWord": false,
+        "AssetVariant": null
+      }
+    ]
+  },
+  {
+    "Text": "",
+    "Actions": [
+      {
+        "Tag": "chapter:\"Transitions\"",
+        "WordIndex": 0,
+        "X": 0,
+        "Y": 0,
+        "W": 0,
+        "H": 0,
+        "TriggerAfterWord": false,
+        "AssetVariant": null
+      },
+      {
+        "Tag": "transition:fade-black:0.5",
+        "WordIndex": 0,
+        "X": 0,
+        "Y": 0,
+        "W": 0,
+        "H": 0,
+        "TriggerAfterWord": false,
+        "AssetVariant": null
+      }
+    ]
+  },
+  {
+    "Text": "Transitions enable scene segmentation between topics.",
+    "Actions": null
+  },
+  {
+    "Text": "",
+    "Actions": [
+      {
+        "Tag": "slide:city:LH:slide-left",
+        "WordIndex": 0,
+        "X": 0,
+        "Y": 0,
+        "W": 0,
+        "H": 0,
+        "TriggerAfterWord": false,
+        "AssetVariant": null
+      }
+    ]
+  },
+  {
+    "Text": "Slides can use seven transition types: none, fade, pop, slide-left, slide-right, slide-up, slide-down.",
+    "Actions": null
+  },
+  {
+    "Text": "",
+    "Actions": [
+      {
+        "Tag": "chapter:\"Overlays\"",
+        "WordIndex": 0,
+        "X": 0,
+        "Y": 0,
+        "W": 0,
+        "H": 0,
+        "TriggerAfterWord": false,
+        "AssetVariant": null
+      },
+      {
+        "Tag": "overlay:world:0.3:fullscreen",
+        "WordIndex": 0,
+        "X": 0,
+        "Y": 0,
+        "W": 0,
+        "H": 0,
+        "TriggerAfterWord": false,
+        "AssetVariant": null
+      }
+    ]
+  },
+  {
+    "Text": "Persistent semi-transparent overlays (watermarks, vignettes) stay on until explicitly erased.",
+    "Actions": null
+  },
+  {
+    "Text": "",
+    "Actions": [
+      {
+        "Tag": "erase:*",
+        "WordIndex": 0,
+        "X": 0,
+        "Y": 0,
+        "W": 0,
+        "H": 0,
+        "TriggerAfterWord": false,
+        "AssetVariant": null
+      }
+    ]
+  },
+  {
+    "Text": "Wipe the board clean and start fresh.",
+    "Actions": null
+  },
+  {
+    "Text": "",
+    "Actions": [
+      {
+        "Tag": "clear",
+        "WordIndex": 0,
+        "X": 0,
+        "Y": 0,
+        "W": 0,
+        "H": 0,
+        "TriggerAfterWord": false,
+        "AssetVariant": null
+      }
+    ]
+  },
+  {
+    "Text": "The v3 renderer now supports embedded Go fonts — no Linux font paths required.",
+    "Actions": [
+      {
+        "Tag": "chapter:\"Blackboard\"",
+        "WordIndex": 0,
+        "X": 0,
+        "Y": 0,
+        "W": 0,
+        "H": 0,
+        "TriggerAfterWord": false,
+        "AssetVariant": null
+      }
+    ]
+  },
+  {
+    "Text": "",
+    "Actions": [
+      {
+        "Tag": "style:blackboard",
+        "WordIndex": 0,
+        "X": 0,
+        "Y": 0,
+        "W": 0,
+        "H": 0,
+        "TriggerAfterWord": false,
+        "AssetVariant": null
+      }
+    ]
+  },
+  {
+    "Text": "Switching to dark board mode with automatic color inversion.",
+    "Actions": [
+      {
+        "Tag": "style:blackboard",
+        "WordIndex": 2,
+        "X": 0,
+        "Y": 0,
+        "W": 0,
+        "H": 0,
+        "TriggerAfterWord": false,
+        "AssetVariant": null
+      }
+    ]
+  },
+  {
+    "Text": "",
+    "Actions": [
+      {
+        "Tag": "banner:\"Blackboard Mode\":\"Automatic inverted colors\"",
+        "WordIndex": 0,
+        "X": 0,
+        "Y": 0,
+        "W": 0,
+        "H": 0,
+        "TriggerAfterWord": false,
+        "AssetVariant": null
+      }
+    ]
+  },
+  {
+    "Text": "",
+    "Actions": [
+      {
+        "Tag": "slide:pyramids:center:slide-up",
+        "WordIndex": 0,
+        "X": 0,
+        "Y": 0,
+        "W": 0,
+        "H": 0,
+        "TriggerAfterWord": false,
+        "AssetVariant": null
+      }
+    ]
+  },
+  {
+    "Text": "Blackboard style inverts asset colors for contrast.",
+    "Actions": null
+  },
+  {
+    "Text": "And that wraps the v3 feature preview.",
+    "Actions": null
+  },
+  {
+    "Text": "",
+    "Actions": [
+      {
+        "Tag": "style:whiteboard",
+        "WordIndex": 0,
+        "X": 0,
+        "Y": 0,
+        "W": 0,
+        "H": 0,
+        "TriggerAfterWord": false,
+        "AssetVariant": null
+      }
+    ]
+  },
+  {
+    "Text": "Thanks for watching.",
+    "Actions": [
+      {
+        "Tag": "chapter:\"End\"",
+        "WordIndex": 0,
+        "X": 0,
+        "Y": 0,
+        "W": 0,
+        "H": 0,
+        "TriggerAfterWord": false,
+        "AssetVariant": null
+      }
+    ]
+  }
+]

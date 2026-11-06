@@ -7,8 +7,8 @@ Welcome to the zen-board v3 roadmap demo. Today we're showcasing the new slidesh
 That's perfect for meme-talking style videos.
 [chapter:"Annotations"][arrow:TL:BR:curved:0.5] Notice how this curved arrow draws attention to the hero image.
 [highlight:100,200,400,150:pulse:2.0]
-[compare:robot:world:"Code World":"Real World":"Before"]
-The [highlight:] primitive creates attention boxes with animated marching ants or pulsing rings.
+[compare:robot:world:"Code World":"Real World"]
+The highlight primitive creates attention boxes with animated marching ants or pulsing rings.
 Lower thirds slide in and out automatically: [banner:"Lower Third Demo":"Animated name card":4.0:FF4444]
 [wait:1.0]
 [chapter:"Transitions"][transition:fade-black:0.5]

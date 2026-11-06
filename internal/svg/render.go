@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"image"
+	"sort"
 
 	"github.com/srwiley/oksvg"
 	"github.com/srwiley/rasterx"
@@ -36,11 +37,20 @@ func RasterizeSVG(svgXML []byte, w, h int, cfg RasterConfig) (*image.RGBA, error
 	return rgba, nil
 }
 
+// CacheKey hashes the rasterisation inputs. Variant pairs are sorted before
+// hashing: iterating the map directly produced a different key per Go map
+// iteration order, so identical rasters were re-rasterised (and re-registered
+// under keys that could never be found again).
 func CacheKey(rawXML []byte, variants Variant, w, h int) string {
 	hasher := sha256.New()
 	hasher.Write(rawXML)
+	pairs := make([]string, 0, len(variants))
 	for k, v := range variants {
-		hasher.Write([]byte(fmt.Sprintf("%s:%s", k, v)))
+		pairs = append(pairs, fmt.Sprintf("%s:%s", k, v))
+	}
+	sort.Strings(pairs)
+	for _, p := range pairs {
+		hasher.Write([]byte(p))
 	}
 	return fmt.Sprintf("%x_%d_%d", hasher.Sum(nil), w, h)
 }

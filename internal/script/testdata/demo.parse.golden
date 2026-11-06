@@ -1,0 +1,269 @@
+[
+  {
+    "Text": "Welcome to our demo script. First, we draw the world on the left.",
+    "Actions": [
+      {
+        "Tag": "world:LH",
+        "WordIndex": 5,
+        "X": 0,
+        "Y": 0,
+        "W": 0,
+        "H": 0,
+        "TriggerAfterWord": false,
+        "AssetVariant": {}
+      }
+    ]
+  },
+  {
+    "Text": "",
+    "Actions": [
+      {
+        "Tag": "WAIT:1.5",
+        "WordIndex": 0,
+        "X": 0,
+        "Y": 0,
+        "W": 0,
+        "H": 0,
+        "TriggerAfterWord": false,
+        "AssetVariant": null
+      }
+    ]
+  },
+  {
+    "Text": "Now we zoom into the top right quadrant. Let's draw a futuristic city here.",
+    "Actions": [
+      {
+        "Tag": "zoom:TR",
+        "WordIndex": 8,
+        "X": 0,
+        "Y": 0,
+        "W": 0,
+        "H": 0,
+        "TriggerAfterWord": false,
+        "AssetVariant": null
+      },
+      {
+        "Tag": "city:TR",
+        "WordIndex": 14,
+        "X": 0,
+        "Y": 0,
+        "W": 0,
+        "H": 0,
+        "TriggerAfterWord": false,
+        "AssetVariant": {}
+      }
+    ]
+  },
+  {
+    "Text": "",
+    "Actions": [
+      {
+        "Tag": "WAIT:1.5",
+        "WordIndex": 0,
+        "X": 0,
+        "Y": 0,
+        "W": 0,
+        "H": 0,
+        "TriggerAfterWord": false,
+        "AssetVariant": null
+      }
+    ]
+  },
+  {
+    "Text": "Now let's zoom to the bottom right quadrant. Here are the pyramids of the ancient world.",
+    "Actions": [
+      {
+        "Tag": "zoom:BR",
+        "WordIndex": 8,
+        "X": 0,
+        "Y": 0,
+        "W": 0,
+        "H": 0,
+        "TriggerAfterWord": false,
+        "AssetVariant": null
+      },
+      {
+        "Tag": "pyramids:BR",
+        "WordIndex": 16,
+        "X": 0,
+        "Y": 0,
+        "W": 0,
+        "H": 0,
+        "TriggerAfterWord": false,
+        "AssetVariant": {}
+      }
+    ]
+  },
+  {
+    "Text": "",
+    "Actions": [
+      {
+        "Tag": "WAIT:1.5",
+        "WordIndex": 0,
+        "X": 0,
+        "Y": 0,
+        "W": 0,
+        "H": 0,
+        "TriggerAfterWord": false,
+        "AssetVariant": null
+      }
+    ]
+  },
+  {
+    "Text": "We will now clear the board. See, the board is clean!",
+    "Actions": [
+      {
+        "Tag": "clear",
+        "WordIndex": 6,
+        "X": 0,
+        "Y": 0,
+        "W": 0,
+        "H": 0,
+        "TriggerAfterWord": false,
+        "AssetVariant": null
+      }
+    ]
+  },
+  {
+    "Text": "",
+    "Actions": [
+      {
+        "Tag": "WAIT:1.5",
+        "WordIndex": 0,
+        "X": 0,
+        "Y": 0,
+        "W": 0,
+        "H": 0,
+        "TriggerAfterWord": false,
+        "AssetVariant": null
+      }
+    ]
+  },
+  {
+    "Text": "Let's reset the camera. We will render a robot in the center using a magic wand cursor.",
+    "Actions": [
+      {
+        "Tag": "zoom:reset",
+        "WordIndex": 4,
+        "X": 0,
+        "Y": 0,
+        "W": 0,
+        "H": 0,
+        "TriggerAfterWord": false,
+        "AssetVariant": null
+      },
+      {
+        "Tag": "robot",
+        "WordIndex": 17,
+        "X": 0,
+        "Y": 0,
+        "W": 0,
+        "H": 0,
+        "TriggerAfterWord": false,
+        "AssetVariant": {
+          "cursor": "magic_wand"
+        }
+      }
+    ]
+  },
+  {
+    "Text": "",
+    "Actions": [
+      {
+        "Tag": "WAIT:1.5",
+        "WordIndex": 0,
+        "X": 0,
+        "Y": 0,
+        "W": 0,
+        "H": 0,
+        "TriggerAfterWord": false,
+        "AssetVariant": null
+      }
+    ]
+  },
+  {
+    "Text": "Let's shift the robot to the bottom left.",
+    "Actions": [
+      {
+        "Tag": "move:robot:BL",
+        "WordIndex": 8,
+        "X": 0,
+        "Y": 0,
+        "W": 0,
+        "H": 0,
+        "TriggerAfterWord": false,
+        "AssetVariant": null
+      }
+    ]
+  },
+  {
+    "Text": "",
+    "Actions": [
+      {
+        "Tag": "WAIT:1",
+        "WordIndex": 0,
+        "X": 0,
+        "Y": 0,
+        "W": 0,
+        "H": 0,
+        "TriggerAfterWord": false,
+        "AssetVariant": null
+      }
+    ]
+  },
+  {
+    "Text": "Finally, we write some text on the right half.",
+    "Actions": [
+      {
+        "Tag": "zoom:RH",
+        "WordIndex": 9,
+        "X": 0,
+        "Y": 0,
+        "W": 0,
+        "H": 0,
+        "TriggerAfterWord": false,
+        "AssetVariant": null
+      },
+      {
+        "Tag": "text:\"AI Innovation\":RH",
+        "WordIndex": 9,
+        "X": 0,
+        "Y": 0,
+        "W": 0,
+        "H": 0,
+        "TriggerAfterWord": false,
+        "AssetVariant": null
+      }
+    ]
+  },
+  {
+    "Text": "",
+    "Actions": [
+      {
+        "Tag": "WAIT:2",
+        "WordIndex": 0,
+        "X": 0,
+        "Y": 0,
+        "W": 0,
+        "H": 0,
+        "TriggerAfterWord": false,
+        "AssetVariant": null
+      }
+    ]
+  },
+  {
+    "Text": "And we reset everything.",
+    "Actions": [
+      {
+        "Tag": "zoom:reset",
+        "WordIndex": 4,
+        "X": 0,
+        "Y": 0,
+        "W": 0,
+        "H": 0,
+        "TriggerAfterWord": false,
+        "AssetVariant": null
+      }
+    ]
+  }
+]

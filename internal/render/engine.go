@@ -5,6 +5,7 @@ import (
 	"image"
 	"image/color"
 	"image/draw"
+	"log"
 	"os"
 	"strings"
 	"sync"
@@ -45,6 +46,15 @@ type Engine struct {
 	AssetMu        sync.RWMutex
 	Stats          RenderStats
 	FastMode       bool
+
+	// cursorCache memoises preset lookups (including misses) so an unknown cursor
+	// name is resolved - and reported - once instead of once per frame.
+	cursorCache   map[string]*CursorPreset
+	cursorCacheMu sync.Mutex
+
+	// disableDerivedCache is a test seam: storeDerived refuses entries so one
+	// engine can render cached and uncached frames for a byte-exact comparison.
+	disableDerivedCache bool
 }
 
 func NewEngine(w, h, fps int, registry *CursorRegistry, defaultCursor string) (*Engine, error) {
@@ -58,6 +68,42 @@ func NewEngine(w, h, fps int, registry *CursorRegistry, defaultCursor string) (*
 		Assets:         make(map[string]image.Image),
 		ScaledAssets:   make(map[string]image.Image),
 	}, nil
+}
+
+// cursorPresetFor resolves a cursor preset with a fallback chain, and only
+// touches the registry once per distinct name so an unknown preset costs no
+// per-frame disk access and no per-frame log line:
+//
+//	requested preset -> shipped "hand" preset -> nil (caller uses e.Hand)
+//
+// Before this, an unknown cursor name (cursor=magic_wand with no such preset on
+// disk) meant no hand was drawn at all, silently, for the whole video.
+func (e *Engine) cursorPresetFor(name string) *CursorPreset {
+	if e.CursorRegistry == nil {
+		return nil
+	}
+	cursorCacheMu := &e.cursorCacheMu
+	cursorCacheMu.Lock()
+	defer cursorCacheMu.Unlock()
+	if e.cursorCache == nil {
+		e.cursorCache = map[string]*CursorPreset{}
+	}
+	if p, seen := e.cursorCache[name]; seen {
+		return p
+	}
+	var resolved *CursorPreset
+	if name != "" {
+		resolved = e.CursorRegistry.Get(name)
+	}
+	if resolved == nil && name != constant.CURSOR_HAND {
+		log.Printf("[Cursor] unknown cursor preset %q; falling back to %q", name, constant.CURSOR_HAND)
+		resolved = e.CursorRegistry.Get(constant.CURSOR_HAND)
+	}
+	if resolved == nil && e.Hand == nil {
+		log.Printf("[Cursor] no cursor preset %q and no hand sprite: drawing without a hand", name)
+	}
+	e.cursorCache[name] = resolved
+	return resolved
 }
 
 func (e *Engine) StartWorkers() {
@@ -433,7 +479,7 @@ func (e *Engine) RenderFrame(frameNum int, events []model.FrameEvent, cam Camera
 	if handVisible {
 		tHandStart := time.Now()
 		cursorName := ResolveStr(activeHandCursor, e.DefaultCursor)
-		preset := e.CursorRegistry.Get(cursorName)
+		preset := e.cursorPresetFor(cursorName)
 		if preset != nil {
 			layers := CursorInterpolate(preset, frameNum, e.FPS, activeHandX, activeHandY, activeHandAngle, activeHandStyle)
 			DrawCursorLayers(buf, layers)

@@ -1,0 +1,47 @@
+[
+  {
+    "Text": "Testing SVG grid positioning.",
+    "Actions": [
+      {
+        "Tag": "shield_test:TL",
+        "WordIndex": 2,
+        "X": 0,
+        "Y": 0,
+        "W": 0,
+        "H": 0,
+        "TriggerAfterWord": false,
+        "AssetVariant": {}
+      }
+    ]
+  },
+  {
+    "Text": "",
+    "Actions": [
+      {
+        "Tag": "activity:TR",
+        "WordIndex": 0,
+        "X": 0,
+        "Y": 0,
+        "W": 0,
+        "H": 0,
+        "TriggerAfterWord": false,
+        "AssetVariant": {}
+      }
+    ]
+  },
+  {
+    "Text": "",
+    "Actions": [
+      {
+        "Tag": "alert-circle:BR",
+        "WordIndex": 0,
+        "X": 0,
+        "Y": 0,
+        "W": 0,
+        "H": 0,
+        "TriggerAfterWord": false,
+        "AssetVariant": {}
+      }
+    ]
+  }
+]

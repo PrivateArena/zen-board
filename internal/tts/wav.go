@@ -146,3 +146,9 @@ func CreateSilentWAV(params WAVParams, duration float64) []byte {
 	copy(result[len(header):], pcm)
 	return result
 }
+
+// CachedWAVParams are the parameters every cached segment shares; silent padding
+// between cached lines must match them or concatenation produces a broken header.
+func CachedWAVParams() WAVParams {
+	return WAVParams{Channels: 1, SampleRate: 24000, BitsPerSample: 16}
+}

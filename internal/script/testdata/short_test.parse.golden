@@ -1,0 +1,17 @@
+[
+  {
+    "Text": "Hi.",
+    "Actions": [
+      {
+        "Tag": "robot",
+        "WordIndex": 1,
+        "X": 0,
+        "Y": 0,
+        "W": 0,
+        "H": 0,
+        "TriggerAfterWord": false,
+        "AssetVariant": {}
+      }
+    ]
+  }
+]

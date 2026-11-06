@@ -22,7 +22,18 @@ type SynthResult struct {
 
 // OrchestrateTTS runs parallel TTS synthesis on script lines, generates silent WAVs for wait actions,
 // compiles absolute word timings, and returns the concatenated audio data and processed line boundaries.
+// It uses constant.TTS_MAX_CONCURRENCY simultaneous requests.
 func OrchestrateTTS(client *TTSClient, lines []model.ScriptLine, speed float64, voice string) ([]byte, []model.WordTiming, []model.ProcessedLine, error) {
+	return OrchestrateTTSConcurrent(client, lines, speed, voice, constant.TTS_MAX_CONCURRENCY)
+}
+
+// OrchestrateTTSConcurrent is OrchestrateTTS with an explicit request bound.
+// Results are written to the index-addressed results slice, so concurrency can
+// never reorder narration or the word timings derived from it.
+func OrchestrateTTSConcurrent(client *TTSClient, lines []model.ScriptLine, speed float64, voice string, concurrency int) ([]byte, []model.WordTiming, []model.ProcessedLine, error) {
+	if concurrency <= 0 {
+		concurrency = constant.TTS_MAX_CONCURRENCY
+	}
 	var jobs []SynthJob
 	for i, line := range lines {
 		if line.Text != "" {
@@ -32,9 +43,9 @@ func OrchestrateTTS(client *TTSClient, lines []model.ScriptLine, speed float64, 
 
 	results := make([]*SynthResult, len(lines))
 	var wg sync.WaitGroup
-	semTTS := make(chan struct{}, 1)
+	semTTS := make(chan struct{}, concurrency)
 
-	fmt.Println("Synthesizing TTS in parallel...")
+	fmt.Printf("Synthesizing TTS (concurrency %d)...\n", concurrency)
 	for _, job := range jobs {
 		wg.Add(1)
 		go func(j SynthJob) {

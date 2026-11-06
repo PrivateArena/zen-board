@@ -1,0 +1,97 @@
+[
+  {
+    "Text": "Let me show you some SVG icons.",
+    "Actions": null
+  },
+  {
+    "Text": "",
+    "Actions": [
+      {
+        "Tag": "activity",
+        "WordIndex": 0,
+        "X": 100,
+        "Y": 200,
+        "W": 300,
+        "H": 300,
+        "TriggerAfterWord": false,
+        "AssetVariant": {}
+      }
+    ]
+  },
+  {
+    "Text": "",
+    "Actions": [
+      {
+        "Tag": "alert-circle",
+        "WordIndex": 0,
+        "X": 500,
+        "Y": 200,
+        "W": 300,
+        "H": 300,
+        "TriggerAfterWord": false,
+        "AssetVariant": {}
+      }
+    ]
+  },
+  {
+    "Text": "",
+    "Actions": [
+      {
+        "Tag": "check-circle",
+        "WordIndex": 0,
+        "X": 900,
+        "Y": 200,
+        "W": 300,
+        "H": 300,
+        "TriggerAfterWord": false,
+        "AssetVariant": {}
+      }
+    ]
+  },
+  {
+    "Text": "Now watch the shield change colors with variants.",
+    "Actions": null
+  },
+  {
+    "Text": "",
+    "Actions": [
+      {
+        "Tag": "shield_test",
+        "WordIndex": 0,
+        "X": 100,
+        "Y": 500,
+        "W": 400,
+        "H": 400,
+        "TriggerAfterWord": false,
+        "AssetVariant": {
+          "shield-body": "#e74c3c",
+          "shield-fill": "#c0392b",
+          "star-shape": "#f1c40f"
+        }
+      }
+    ]
+  },
+  {
+    "Text": "Different shield colors.",
+    "Actions": null
+  },
+  {
+    "Text": "",
+    "Actions": [
+      {
+        "Tag": "shield_test",
+        "WordIndex": 0,
+        "X": 600,
+        "Y": 500,
+        "W": 400,
+        "H": 400,
+        "TriggerAfterWord": false,
+        "AssetVariant": {
+          "shield-body": "#2ecc71",
+          "shield-fill": "#27ae60",
+          "star-shape": "#e74c3c"
+        }
+      }
+    ]
+  }
+]

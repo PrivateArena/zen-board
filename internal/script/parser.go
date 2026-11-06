@@ -1,74 +1,93 @@
 package script
 
 import (
+	"fmt"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
+	"unicode/utf8"
+
 	"zen-board/internal/constant"
+	"zen-board/internal/diag"
 	"zen-board/internal/model"
 )
 
+// The parser matches through the DSL table (dsl.go): every pattern is declared
+// exactly once, and the linter, the compiler and `check --dsl` all read the same
+// specs. The indices are the shapes listed there.
 var (
-	drawRegex       = regexp.MustCompile(`\[draw:([^\]@:]+)((?:[:\w-]+(?:=[^\]@:]+)?)*)(?:@([\d,]+))?\]`)
-	textRegex       = regexp.MustCompile(`\[text:([^\]@]+)(?:@([\d,]+))?\]`)
-	eraseRegex      = regexp.MustCompile(`\[erase:([^\]@]+)(?:@([\d,]+))?\]`)
-	moveRegex       = regexp.MustCompile(`\[move:([^\]@]+)(?:@([\d,]+))?\]`)
-	genRegex        = regexp.MustCompile(`\[gen:([^\]@]+)(?:@([\d,]+))?\]`)
-	waitRegex       = regexp.MustCompile(`\[wait:([\d.]+)\]`)
-	clearRegex      = regexp.MustCompile(`\[clear\]`)
-	zoomRegex       = regexp.MustCompile(`\[zoom:([^\]]+)\]`)
-	styleRegex      = regexp.MustCompile(`\[style:([^\]]+)\]`)
-	chapterRegex    = regexp.MustCompile(`\[chapter:([^\]]+)\]`)
-	sfxRegex        = regexp.MustCompile(`\[sfx:([^\]]+)\]`)
-	subtitleRegex   = regexp.MustCompile(`\[subtitle:([^\]]+)\]`)
-	slideRegex      = regexp.MustCompile(`\[slide:([^\]]+)\]`)
-	bannerRegex     = regexp.MustCompile(`\[banner:([^\]]+)\]`)
-	arrowRegex      = regexp.MustCompile(`\[arrow:([^\]]+)\]`)
-	highlightRegex  = regexp.MustCompile(`\[highlight:([^\]]+)\]`)
-	compareRegex    = regexp.MustCompile(`\[compare:([^\]]+)\]`)
-	transitionRegex = regexp.MustCompile(`\[transition:([^\]]+)\]`)
-	overlayRegex    = regexp.MustCompile(`\[overlay:([^\]]+)\]`)
-	counterRegex    = regexp.MustCompile(`\[counter:([^\]]+)\]`)
-	watermarkRegex  = regexp.MustCompile(`\[watermark:([^\]]+)\]`)
+	drawRegex       = mustPattern("draw", 0)
+	textRegex       = mustPattern("text", 0)
+	eraseRegex      = mustPattern("erase", 1) // the single-layer shape
+	moveRegex       = mustPattern("move", 0)
+	genRegex        = mustPattern("gen", 0)
+	waitRegex       = mustPattern("wait", 0)
+	clearRegex      = mustPattern("clear", 0)
+	zoomRegex       = mustPattern("zoom", 0)
+	styleRegex      = mustPattern("style", 0)
+	chapterRegex    = mustPattern("chapter", 0)
+	sfxRegex        = mustPattern("sfx", 0)
+	subtitleRegex   = mustPattern("subtitle", 0)
+	slideRegex      = mustPattern("slide", 0)
+	bannerRegex     = mustPattern("banner", 0)
+	arrowRegex      = mustPattern("arrow", 0)
+	highlightRegex  = mustPattern("highlight", 0)
+	compareRegex    = mustPattern("compare", 0)
+	transitionRegex = mustPattern("transition", 0)
+	overlayRegex    = mustPattern("overlay", 0)
+	counterRegex    = mustPattern("counter", 0)
+	watermarkRegex  = mustPattern("watermark", 0)
 )
 
+func mustPattern(tag string, i int) *regexp.Regexp {
+	re := Pattern(tag, i)
+	if re == nil {
+		panic(fmt.Sprintf("script: DSL table has no pattern %s[%d]", tag, i))
+	}
+	return re
+}
+
+// Parse splits a script into lines and their embedded actions. Spans that
+// overlap (nested or unclosed tags) are dropped and reported by Lint; Parse
+// itself never panics. Use ParseChecked when the caller wants the findings.
 func Parse(input string) []model.ScriptLine {
+	lines, _ := ParseChecked(input, "")
+	return lines
+}
+
+// ParseChecked is Parse plus the diagnostics produced while parsing. file is
+// only used to label findings.
+func ParseChecked(input, file string) ([]model.ScriptLine, []diag.Finding) {
 	lines := strings.Split(input, "\n")
 	var result []model.ScriptLine
+	var findings []diag.Finding
+	lineOff := 0
 
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
+	for i, raw := range lines {
+		line := strings.TrimSpace(raw)
 		if line == "" {
+			lineOff += len(raw) + 1
 			continue
 		}
+		// pad: byte offset of the trimmed line within its file line, so columns
+		// match what an editor shows. lineOff: absolute offset of the raw line in
+		// the whole script.
+		pad := len(raw) - len(strings.TrimLeft(raw, " \t\v\f\r"))
 
-		cleanText, actions := extractActions(line)
+		cleanText, actions, ff := extractActions(line, i+1, file, lineOff+pad, pad)
+		findings = append(findings, ff...)
+		for j := range actions {
+			actions[j].SrcPath = file
+		}
 		result = append(result, model.ScriptLine{
 			Text:    cleanText,
 			Actions: actions,
 		})
+		lineOff += len(raw) + 1 // + newline
 	}
 
-	return result
-}
-
-func parseQuotedStringParts(s string) []string {
-	var parts []string
-	var current strings.Builder
-	inQuote := false
-	for _, ch := range s {
-		if ch == '"' {
-			inQuote = !inQuote
-			current.WriteRune(ch)
-		} else if ch == ':' && !inQuote {
-			parts = append(parts, current.String())
-			current.Reset()
-		} else {
-			current.WriteRune(ch)
-		}
-	}
-	parts = append(parts, current.String())
-	return parts
+	return result, findings
 }
 
 func unquote(s string) string {
@@ -79,20 +98,22 @@ func unquote(s string) string {
 	return s
 }
 
-func extractActions(line string) (string, []model.DrawAction) {
+// tagMatch is one raw tag span recognised in a script line, carrying its byte
+// position plus everything the compiler needs (parsed tag, coords, variants).
+type tagMatch struct {
+	start, end int
+	tag        string
+	isWait     bool
+	waitVal    float64
+	x, y, w, h int
+	variants   map[string]string
+}
+
+func extractActions(line string, lineNo int, file string, lineOff, pad int) (string, []model.DrawAction, []diag.Finding) {
 	var actions []model.DrawAction
-
-	type tagInfo struct {
-		start, end int
-		tag        string
-		isWait     bool
-		waitVal    float64
-		x, y, w, h int
-		variants   map[string]string
-	}
-
-	var tags []tagInfo
+	var tags []tagMatch
 	cleanBuilder := strings.Builder{}
+	consumed := make([]bool, len(line))
 	lastPos := 0
 
 	extractDrawTag := func() {
@@ -123,7 +144,7 @@ func extractActions(line string) (string, []model.DrawAction) {
 					}
 				}
 			}
-			ti := tagInfo{start: m[0], end: m[1], tag: tag, variants: variants}
+			ti := tagMatch{start: m[0], end: m[1], tag: tag, variants: variants}
 			if len(m) >= 8 && m[6] != -1 && m[7] != -1 {
 				coords := strings.Split(line[m[6]:m[7]], ",")
 				if len(coords) >= 2 {
@@ -143,7 +164,7 @@ func extractActions(line string) (string, []model.DrawAction) {
 		matches := re.FindAllStringSubmatchIndex(line, -1)
 		for _, m := range matches {
 			content := line[m[2]:m[3]]
-			ti := tagInfo{start: m[0], end: m[1], tag: prefix + content}
+			ti := tagMatch{start: m[0], end: m[1], tag: prefix + content}
 			if len(m) >= 6 && m[4] != -1 && m[5] != -1 {
 				coords := strings.Split(line[m[4]:m[5]], ",")
 				if len(coords) >= 2 {
@@ -163,7 +184,7 @@ func extractActions(line string) (string, []model.DrawAction) {
 		matches := re.FindAllStringSubmatchIndex(line, -1)
 		for _, m := range matches {
 			content := line[m[2]:m[3]]
-			tags = append(tags, tagInfo{start: m[0], end: m[1], tag: prefix + content})
+			tags = append(tags, tagMatch{start: m[0], end: m[1], tag: prefix + content})
 		}
 	}
 
@@ -171,7 +192,7 @@ func extractActions(line string) (string, []model.DrawAction) {
 		matches := re.FindAllStringSubmatchIndex(line, -1)
 		for _, m := range matches {
 			rawContent := line[m[2]:m[3]]
-			parts := parseQuotedStringParts(rawContent)
+			parts := SplitParts(rawContent)
 			tag := prefix
 			for i, p := range parts {
 				if i == 0 {
@@ -180,7 +201,7 @@ func extractActions(line string) (string, []model.DrawAction) {
 					tag += ":" + p
 				}
 			}
-			tags = append(tags, tagInfo{start: m[0], end: m[1], tag: tag})
+			tags = append(tags, tagMatch{start: m[0], end: m[1], tag: tag})
 		}
 	}
 
@@ -209,34 +230,73 @@ func extractActions(line string) (string, []model.DrawAction) {
 	waitMatches := waitRegex.FindAllStringSubmatchIndex(line, -1)
 	for _, m := range waitMatches {
 		val, _ := strconv.ParseFloat(line[m[2]:m[3]], 64)
-		tags = append(tags, tagInfo{start: m[0], end: m[1], isWait: true, waitVal: val})
+		tags = append(tags, tagMatch{start: m[0], end: m[1], isWait: true, waitVal: val})
 	}
 
 	clearMatches := clearRegex.FindAllStringSubmatchIndex(line, -1)
 	for _, m := range clearMatches {
-		tags = append(tags, tagInfo{start: m[0], end: m[1], tag: constant.TAG_CLEAR})
+		tags = append(tags, tagMatch{start: m[0], end: m[1], tag: constant.TAG_CLEAR})
 	}
 
-	for i := 0; i < len(tags); i++ {
-		for j := i + 1; j < len(tags); j++ {
-			if tags[i].start > tags[j].start {
-				tags[i], tags[j] = tags[j], tags[i]
-			}
-		}
-	}
+	sort.SliceStable(tags, func(i, j int) bool { return tags[i].start < tags[j].start })
 
+	var findings []diag.Finding
 	for _, t := range tags {
+		// Overlapping span: two different patterns matched the same bytes, e.g.
+		// the nested `[text:"a [draw:x] b"]`. Slicing line[lastPos:t.start] here
+		// used to panic; the tag is dropped and reported instead.
+		if t.start < lastPos {
+			findings = append(findings, diag.Finding{
+				Code:      diag.E0003,
+				Severity:  diag.SeverityOf(diag.E0003),
+				Stage:     "parse",
+				File:      file,
+				Line:      lineNo,
+				Col:       t.start + 1 + pad,
+				Message:   fmt.Sprintf("tag %q overlaps a preceding tag that ends at column %d", tagLabel(t), lastPos+1),
+				FixHint:   "close the outer tag before opening an inner one, or put the nested tag outside the quoted text",
+				Snippet:   snippetAt(line, t.start, t.end),
+				LegacyMsg: fmt.Sprintf("Warning: overlapping tag %q at line %d col %d ignored", tagLabel(t), lineNo, t.start+1),
+			})
+			continue
+		}
+
 		cleanBuilder.WriteString(line[lastPos:t.start])
+
+		// A consumed span that still contains an opening bracket swallowed a nested
+		// tag - `[text:"a [draw:x] b"]` is the canonical shape. The inner tag is
+		// gone from the byte stream, so report it here rather than lose it.
+		if strings.Contains(line[t.start+1:t.end], "[") {
+			findings = append(findings, diag.Finding{
+				Code:      diag.E0003,
+				Severity:  diag.SeverityOf(diag.E0003),
+				Stage:     "parse",
+				File:      file,
+				Line:      lineNo,
+				Col:       pad + runeCol(line, t.start) + 1,
+				Message:   fmt.Sprintf("tag %q swallows a nested tag", snippetAt(line, t.start, t.end)),
+				FixHint:   "close the outer tag before opening an inner one, or move the inner tag outside the quoted text",
+				Snippet:   snippetAt(line, t.start, t.end),
+				LegacyMsg: fmt.Sprintf("Warning: tag %q at line %d swallows a nested tag", snippetAt(line, t.start, t.end), lineNo),
+			})
+		}
 
 		currentClean := cleanBuilder.String()
 		wordCount := len(strings.Fields(currentClean))
 
+		src := model.DrawAction{
+			SrcOffset: lineOff + t.start,
+			SrcLength: t.end - t.start,
+			SrcLine:   lineNo,
+			SrcCol:    pad + runeCol(line, t.start) + 1,
+			SrcRaw:    line[t.start:t.end],
+		}
+
 		if t.isWait {
-			actions = append(actions, model.DrawAction{
-				Tag:              constant.TAG_WAIT + strconv.FormatFloat(t.waitVal, 'f', -1, 64),
-				WordIndex:        wordCount,
-				TriggerAfterWord: wordCount > 0,
-			})
+			src.Tag = constant.TAG_WAIT + strconv.FormatFloat(t.waitVal, 'f', -1, 64)
+			src.WordIndex = wordCount
+			src.TriggerAfterWord = wordCount > 0
+			actions = append(actions, src)
 		} else {
 			tag := t.tag
 			triggerAfter := false
@@ -244,23 +304,62 @@ func extractActions(line string) (string, []model.DrawAction) {
 				tag = strings.TrimSuffix(tag, "+")
 				triggerAfter = true
 			}
-			actions = append(actions, model.DrawAction{
-				Tag:              tag,
-				WordIndex:        wordCount,
-				X:                t.x,
-				Y:                t.y,
-				W:                t.w,
-				H:                t.h,
-				TriggerAfterWord: triggerAfter,
-				AssetVariant:     t.variants,
-			})
+			src.Tag = tag
+			src.WordIndex = wordCount
+			src.X = t.x
+			src.Y = t.y
+			src.W = t.w
+			src.H = t.h
+			src.TriggerAfterWord = triggerAfter
+			src.AssetVariant = t.variants
+			actions = append(actions, src)
 		}
 
 		lastPos = t.end
+		for i := t.start; i < t.end && i < len(consumed); i++ {
+			consumed[i] = true
+		}
 	}
 	cleanBuilder.WriteString(line[lastPos:])
+	findings = append(findings, residualSpanFindings(line, consumed, lineNo, file, pad)...)
 
 	cleanText := cleanBuilder.String()
 	words := strings.Fields(cleanText)
-	return strings.Join(words, " "), actions
+	return strings.Join(words, " "), actions, findings
+}
+
+// runeCol converts a byte index inside a line into the 1-based rune column an
+// editor reports. Byte columns drift on any non-ASCII narration.
+func runeCol(line string, byteIdx int) int {
+	if byteIdx > len(line) {
+		byteIdx = len(line)
+	}
+	if byteIdx < 0 {
+		byteIdx = 0
+	}
+	return utf8.RuneCountInString(line[:byteIdx])
+}
+
+// tagLabel names a matched tag for diagnostics without assuming its shape.
+func tagLabel(t tagMatch) string {
+	if t.isWait {
+		return fmt.Sprintf("[wait:%g]", t.waitVal)
+	}
+	return "[" + t.tag + "]"
+}
+
+// snippetAt returns a bounded one-line excerpt for a diagnostic.
+func snippetAt(line string, start, end int) string {
+	const max = 72
+	if start < 0 {
+		start = 0
+	}
+	if end > len(line) || end < start {
+		end = len(line)
+	}
+	s := line[start:end]
+	if len(s) > max {
+		s = s[:max] + "..."
+	}
+	return s
 }
