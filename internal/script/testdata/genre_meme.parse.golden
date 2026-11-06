@@ -3,7 +3,7 @@
     "Text": "",
     "Actions": [
       {
-        "Tag": "banner:\"IT WEDGES\":\"Nobody: ... absolutely nobody:\"",
+        "Tag": "banner:\"THE MEME BEAT\":\"caption, sticker, punchline\"",
         "WordIndex": 0,
         "X": 0,
         "Y": 0,
@@ -40,10 +40,55 @@
     ]
   },
   {
-    "Text": "And here is the punchline, at full size.",
+    "Text": "And here is the reversal, full bleed.",
     "Actions": [
       {
         "Tag": "slide:city:center:pop",
+        "WordIndex": 0,
+        "X": 0,
+        "Y": 0,
+        "W": 0,
+        "H": 0,
+        "TriggerAfterWord": false,
+        "AssetVariant": null
+      },
+      {
+        "Tag": "transition:fade-black:0.5",
+        "WordIndex": 7,
+        "X": 0,
+        "Y": 0,
+        "W": 0,
+        "H": 0,
+        "TriggerAfterWord": false,
+        "AssetVariant": null
+      },
+      {
+        "Tag": "clear",
+        "WordIndex": 7,
+        "X": 0,
+        "Y": 0,
+        "W": 0,
+        "H": 0,
+        "TriggerAfterWord": false,
+        "AssetVariant": null
+      }
+    ]
+  },
+  {
+    "Text": "That is the punchline, and it leaves on its own.",
+    "Actions": [
+      {
+        "Tag": "caption:\"NO WAY\" anchor=HB color=#FFFF00 outline=8 size=96 dur=2 exit=pop",
+        "WordIndex": 0,
+        "X": 0,
+        "Y": 0,
+        "W": 0,
+        "H": 0,
+        "TriggerAfterWord": false,
+        "AssetVariant": null
+      },
+      {
+        "Tag": "sticker:robot anchor=tr w=220 h=220 dur=2 exit=fade",
         "WordIndex": 0,
         "X": 0,
         "Y": 0,
@@ -55,7 +100,7 @@
     ]
   },
   {
-    "Text": "",
+    "Text": "Nothing needed to take the caption away.",
     "Actions": [
       {
         "Tag": "zoom:reset",
@@ -68,8 +113,8 @@
         "AssetVariant": null
       },
       {
-        "Tag": "text:\"NO WAY\":center:sans:110:bold",
-        "WordIndex": 0,
+        "Tag": "erase:*",
+        "WordIndex": 2,
         "X": 0,
         "Y": 0,
         "W": 0,
@@ -78,43 +123,8 @@
         "AssetVariant": null
       },
       {
-        "Tag": "highlight:600,300,700,400:pulse:2",
-        "WordIndex": 0,
-        "X": 0,
-        "Y": 0,
-        "W": 0,
-        "H": 0,
-        "TriggerAfterWord": false,
-        "AssetVariant": null
-      }
-    ]
-  },
-  {
-    "Text": "Back to the robot, who saw it coming.",
-    "Actions": [
-      {
-        "Tag": "transition:fade-black:0.5",
-        "WordIndex": 0,
-        "X": 0,
-        "Y": 0,
-        "W": 0,
-        "H": 0,
-        "TriggerAfterWord": false,
-        "AssetVariant": null
-      },
-      {
-        "Tag": "clear",
-        "WordIndex": 8,
-        "X": 0,
-        "Y": 0,
-        "W": 0,
-        "H": 0,
-        "TriggerAfterWord": false,
-        "AssetVariant": null
-      },
-      {
-        "Tag": "robot:center",
-        "WordIndex": 8,
+        "Tag": "world:center",
+        "WordIndex": 7,
         "X": 0,
         "Y": 0,
         "W": 0,

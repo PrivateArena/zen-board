@@ -6,6 +6,7 @@ import (
 	"image/color"
 	"image/draw"
 	"log"
+	"math"
 	"os"
 	"strings"
 	"sync"
@@ -171,6 +172,136 @@ func (e *Engine) RegisterAsset(name string, img image.Image) {
 	e.AssetMu.Unlock()
 }
 
+// drawScreenLayer composites the overlay layer after the camera crop.
+//
+// The boxes are deliberately *not* mapped through the crop: a presenter layer describes
+// where on the frame it sits, which is the whole point of putting it above the board. A
+// mascot placed bottom-right stays bottom-right while the camera looks at the other
+// corner, and a caption keeps its pixel size instead of being magnified by a zoom.
+func (e *Engine) drawScreenLayer(dst *image.RGBA, events []model.FrameEvent, frameNum int) {
+	for _, ev := range events {
+		visibility := exitRamp(ev, frameNum, 1.0)
+		if visibility <= 0 {
+			continue
+		}
+		switch ev.EventType {
+		case constant.EVENT_TRANSITION:
+			handleTransitionEvent(e, frameNum, ev, dst, visibility)
+		case constant.EVENT_OVERLAY:
+			handleOverlayEvent(e, frameNum, ev, dst, visibility)
+		case constant.EVENT_HIGHLIGHT, constant.EVENT_ARROW, constant.EVENT_ARROW_STATIC:
+			// Annotations carry their geometry in TargetImage/ArrowFrom, not in an asset,
+			// so they need their own handlers rather than the raster path.
+			e.drawScreenAnnotation(dst, frameNum, ev, visibility)
+		default:
+			e.AssetMu.RLock()
+			img, ok := e.Assets[ev.TargetImage]
+			e.AssetMu.RUnlock()
+			if !ok {
+				continue
+			}
+			e.blitNative(dst, ev, img, visibility)
+		}
+	}
+}
+
+// drawScreenAnnotation draws an annotation that was addressed to a presenter layer, so
+// the ring or arrow stays with the element it names instead of being left behind by the
+// camera crop. Reveals are skipped: an annotation naming a presenter has no hand.
+func (e *Engine) drawScreenAnnotation(dst *image.RGBA, frameNum int, ev model.FrameEvent, visibility float64) {
+	switch ev.EventType {
+	case constant.EVENT_HIGHLIGHT:
+		handleHighlightEvent(e, frameNum, ev, dst, visibility)
+	default:
+		// The arrow handler draws the stroke and returns the hand position; a
+		// screen-space annotation deliberately drops the hand, which belongs to the board.
+		handleArrowEvent(e, frameNum, ev, dst, visibility)
+	}
+}
+
+// blitNative draws a raster at its own pixel size, centred in the placement box. This
+// is what makes `[caption:… size=110]` produce 110-px glyphs instead of whatever the
+// contain-fit happens to produce.
+func (e *Engine) blitNative(buf *image.RGBA, ev model.FrameEvent, img image.Image, visibility float64) {
+	w := img.Bounds().Dx()
+	h := img.Bounds().Dy()
+	x, y := ev.X, ev.Y
+	switch ev.Align {
+	case constant.ALIGN_LEFT:
+		x = ev.X
+	case constant.ALIGN_RIGHT:
+		x = ev.X + ev.Width - w
+	default:
+		if ev.Width > 0 {
+			x = ev.X + (ev.Width-w)/2
+		}
+	}
+	if ev.Height > 0 {
+		y = ev.Y + (ev.Height-h)/2
+	}
+	// A caption taller than its box is centred in it, which can push it off the canvas;
+	// keep the whole raster on screen where the canvas allows it.
+	if max := e.Width - w; x > max {
+		x = max
+	}
+	if max := e.Height - h; y > max {
+		y = max
+	}
+	if x < 0 {
+		x = 0
+	}
+	if y < 0 {
+		y = 0
+	}
+	DrawWithMask(buf, image.Rect(x, y, x+w, y+h), img, visibility)
+}
+
+// eventVisibility decides how strongly an event is on screen, combining the camera
+// transition with the layer and exit rules.
+//
+// An overlay-layer event deliberately skips the camera test: a mascot or a caption is
+// not part of the board, so [zoom:] pointing elsewhere must not make it vanish.
+//
+// An exit event ramps its own alpha down over its window. The window is a separate
+// event precisely because the cut loops rewrite EndFrame retroactively.
+func eventVisibility(ev model.FrameEvent, frameNum int, srcPreset, tgtPreset string, isVisibleIn func(string, string) bool, transitionT float64) float64 {
+	if ev.Layer == constant.LAYER_OVERLAY {
+		return exitRamp(ev, frameNum, 1.0)
+	}
+	focus := ev.ZoomFocus
+	if focus == "" {
+		focus = constant.FOCUS_RESET
+	}
+	srcVis := isVisibleIn(focus, srcPreset)
+	tgtVis := isVisibleIn(focus, tgtPreset)
+	var visibility float64
+	switch {
+	case srcVis && tgtVis:
+		visibility = 1.0
+	case srcVis:
+		visibility = 1.0 - transitionT
+	case tgtVis:
+		visibility = transitionT
+	default:
+		visibility = 0.0
+	}
+	return exitRamp(ev, frameNum, visibility)
+}
+
+// exitRamp fades an exit event from opaque to gone across its frame window.
+func exitRamp(ev model.FrameEvent, frameNum int, base float64) float64 {
+	if ev.ExitFrames <= 0 {
+		return base
+	}
+	progress := CalcProgress(frameNum, ev.StartFrame, ev.StartFrame+ev.ExitFrames)
+	switch ev.ExitKind {
+	case constant.EXIT_POP:
+		// A pop-out leaves faster than it arrives, which is what reads as comedic timing.
+		progress = math.Pow(progress, 0.6)
+	}
+	return base * (1.0 - progress)
+}
+
 // RenderFrame generates a single frame based on the active events.
 func (e *Engine) RenderFrame(frameNum int, events []model.FrameEvent, cam CameraState, style string) *image.RGBA {
 	t0 := time.Now()
@@ -198,8 +329,19 @@ func (e *Engine) RenderFrame(frameNum int, events []model.FrameEvent, cam Camera
 
 	slideAnimFrames := int(0.18 * float64(e.FPS))
 
+	// Overlay-layer events are held back and composited after the camera crop. A mascot
+	// or a caption is not part of the board, so zooming must not magnify it, clip it at
+	// the edge of the cropped region, or move it off screen.
+	var screenLayer []model.FrameEvent
+
 	for _, ev := range events {
 		if frameNum < ev.StartFrame || frameNum > ev.EndFrame {
+			continue
+		}
+		// A transition is a full-frame effect: compositing it after the crop keeps it on
+		// top of the presenter layer, so a fade really does cover the mascot.
+		if ev.Layer == constant.LAYER_OVERLAY || ev.EventType == constant.EVENT_TRANSITION {
+			screenLayer = append(screenLayer, ev)
 			continue
 		}
 
@@ -221,20 +363,7 @@ func (e *Engine) RenderFrame(frameNum int, events []model.FrameEvent, cam Camera
 			tgtPreset = constant.FOCUS_RESET
 		}
 
-		var visibility float64 = 1.0
-		srcVis := isVisibleIn(evFocus, srcPreset)
-		tgtVis := isVisibleIn(evFocus, tgtPreset)
-
-		if srcVis && tgtVis {
-			visibility = 1.0
-		} else if srcVis && !tgtVis {
-			visibility = 1.0 - cam.TransitionT
-		} else if !srcVis && tgtVis {
-			visibility = cam.TransitionT
-		} else {
-			visibility = 0.0
-		}
-
+		visibility := eventVisibility(ev, frameNum, srcPreset, tgtPreset, isVisibleIn, cam.TransitionT)
 		if visibility <= 0.0 {
 			continue
 		}
@@ -322,6 +451,11 @@ func (e *Engine) RenderFrame(frameNum int, events []model.FrameEvent, cam Camera
 
 		var renderW, renderH int
 		var renderX, renderY int
+
+		if ev.FitMode == constant.FIT_NATIVE {
+			e.blitNative(buf, ev, img, visibility)
+			continue
+		}
 
 		if ev.Width > 0 && ev.Height > 0 {
 			srcW := img.Bounds().Dx()
@@ -495,6 +629,8 @@ func (e *Engine) RenderFrame(frameNum int, events []model.FrameEvent, cam Camera
 		e.Pool.BufferPool.Put(buf)
 	}
 	localCropScaleTime = time.Since(tCropScaleStart)
+
+	e.drawScreenLayer(finalFrame, screenLayer, frameNum)
 
 	atomic.AddInt64(&e.Stats.ClearBgTime, int64(tClearBg))
 	atomic.AddInt64(&e.Stats.InvertColorTime, int64(localInvertColorTime))

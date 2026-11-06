@@ -51,6 +51,14 @@ const (
 	W0007 = "W0007"
 	// W0008: a text job failed to rasterise; the text is absent.
 	W0008 = "W0008"
+	// W0009: exit= was dropped because the layer it was written on never ends.
+	W0009 = "W0009"
+	// W0010: an exit animation was dropped because it lands past the end of the video.
+	W0010 = "W0010"
+	// W0011: a pixel-exact caption is larger than the canvas and will be clipped.
+	W0011 = "W0011"
+	// W0012: w= or h= was given without its partner, so the box fell back to the anchor.
+	W0012 = "W0012"
 
 	// I0001: snapshot truncated by -max.
 	I0001 = "I0001"
@@ -60,7 +68,7 @@ const (
 // treated as errors so a new rule can never silently downgrade itself.
 func SeverityOf(code string) Severity {
 	switch code {
-	case W0001, W0002, W0003, W0004, W0005, W0006, W0007, W0008:
+	case W0001, W0002, W0003, W0004, W0005, W0006, W0007, W0008, W0009, W0010, W0011, W0012:
 		return SeverityWarning
 	case I0001:
 		return SeverityInfo

@@ -50,16 +50,24 @@ type Event struct {
 	// overloaded today: the overlay and counter handlers store a *layout* key in the
 	// same field the camera reads, so a naive dump would report a box as a camera move
 	// and teach the reader wrong.
-	CameraFocus  string  `json:"camera_focus,omitempty"`
-	LayoutPreset string  `json:"layout_preset,omitempty"`
-	MaskStyle    string  `json:"mask_style,omitempty"`
-	HandStyle    string  `json:"hand_style,omitempty"`
-	Cursor       string  `json:"cursor,omitempty"`
-	Transition   string  `json:"transition,omitempty"`
-	RevealSec    float64 `json:"reveal_sec,omitempty"`
-	Persistent   bool    `json:"persistent,omitempty"`
-	SrcLine      int     `json:"src_line,omitempty"`
-	SrcCol       int     `json:"src_col,omitempty"`
+	CameraFocus  string `json:"camera_focus,omitempty"`
+	LayoutPreset string `json:"layout_preset,omitempty"`
+	// Layer and Sticky describe the genre semantics: an overlay-layer event ignores the
+	// camera, a sticky one survives the board wipe.
+	Layer  string `json:"layer,omitempty"`
+	Sticky bool   `json:"sticky,omitempty"`
+	// ExitFrames / ExitKind are set on the exit event exit= produced, not on the layer
+	// it follows: an exit is a second event because a cut would otherwise swallow it.
+	ExitFrames int     `json:"exit_frames,omitempty"`
+	ExitKind   string  `json:"exit_kind,omitempty"`
+	MaskStyle  string  `json:"mask_style,omitempty"`
+	HandStyle  string  `json:"hand_style,omitempty"`
+	Cursor     string  `json:"cursor,omitempty"`
+	Transition string  `json:"transition,omitempty"`
+	RevealSec  float64 `json:"reveal_sec,omitempty"`
+	Persistent bool    `json:"persistent,omitempty"`
+	SrcLine    int     `json:"src_line,omitempty"`
+	SrcCol     int     `json:"src_col,omitempty"`
 }
 
 // Rect is the canvas box of an event.
@@ -126,6 +134,7 @@ func BuildTimeline(comp *builder.TimelineCompilation, duration float64, totalFra
 			Index: i, Type: ev.EventType, Asset: ev.TargetImage, ID: ev.ID,
 			StartFrame: ev.StartFrame, EndFrame: ev.EndFrame,
 			StartSec: sec(ev.StartFrame), EndSec: sec(ev.EndFrame),
+			Layer: ev.Layer, Sticky: ev.Sticky, ExitFrames: ev.ExitFrames, ExitKind: ev.ExitKind,
 			MaskStyle: ev.MaskStyle, HandStyle: ev.HandStyle, Cursor: ev.Cursor,
 			Transition: ev.Transition, RevealSec: ev.RevealDuration,
 			Persistent: ev.EndFrame >= totalFrames-1,

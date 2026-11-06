@@ -5,71 +5,79 @@ it parses inline tags, synthesises TTS with per-word timing, compiles an event
 timeline, then rasterises frames deterministically and pipes them to ffmpeg.
 Single Go binary. No browser, no DOM.
 
-## Run it
+## The loop
 
 ```bash
 go build -o zen-board .
-./zen-board -script examples/demo.zen -o out.mp4      # full render (needs TTS + ffmpeg)
-./zen-board assets list                               # asset catalog (id -> file)
-./zen-board assets ui                                 # web asset manager
-go test ./...                                         # unit + integration (~10s)
+./zen-board check     -script s.zen -json      # validate; no TTS, no network, no ffmpeg
+./zen-board snapshot  -script s.zen -events end -max 24   # PNGs + sheet, needs warm TTS cache
+./zen-board timeline  -script s.zen -json      # what the compiler decided, as data
+./zen-board -script s.zen -o out.mp4           # render (bare flags = `render`)
+./zen-board assets list                        # asset catalog (id -> file)
 ```
 
-Flags that matter: `-script` (required), `-assets` (default `./assets`),
-`-tts` (zen-lights address, default from `config.json`), `-tts-cache` (default
-`/tmp/zen-board/tts`), `-w/-h/-fps`, `-freeze` (trailing held frames),
-`-camera`, `-eventlog <file>` (JSONL of every event ENTER/EXIT).
+1. Edit, then `check`. Exit 10 means blocked; every finding carries
+   `file:line:col`, a code, and a `Fix:`. Exit 3 = environment (missing ffmpeg,
+   cold TTS cache). Exit 2 = bad flags. `check` spends zero TTS requests.
+2. `snapshot` writes PNGs of the frames you asked for, in `frames/`, plus
+   `manifest.json` and a contact sheet (JPEG, ≤1568px, one tile for a vision
+   model). It never spawns ffmpeg and never issues a TTS request: frame numbering
+   comes from real narration timings, so warm the cache with one render first.
+3. **Open the PNG.** Edit. Repeat. An MP4 tells a text agent nothing.
 
-## The loop
-
-1. Edit the `.zen` script.
-2. Validate it **before** spending TTS: `zen-board check -script s.zen -json`
-   (exit 10 = blocked, each finding carries `file:line:col` and a `Fix:`).
-3. Render: `zen-board -script s.zen -o out.mp4`.
-4. Look at the screen without an encode:
-   `zen-board snapshot -script s.zen -events end -max 24` writes ≤24 PNGs plus a
-   contact sheet and `manifest.json` into `frames/`.
-5. Open the PNG you produced. Edit. Repeat.
+Flags that matter: `-script`, `-assets` (`./assets`), `-tts`, `-tts-cache`
+(`/tmp/zen-board/tts`), `-w/-h/-fps`, `-freeze` (trailing held frames),
+`-eventlog <file>`. For `snapshot`: `-at 3s,120`, `-every 0.5s`,
+`-events start|mid|end|all`, `-frame N`, `-max` (default 24, truncation is
+reported, never silent), `-max-w`, `-sheet jpg|png|none`.
 
 ## DSL
 
-`[tag:arg:arg@x,y,w,h]` inside a narration line; the tag fires at the word that
-precedes it. Bare `[asset]` / `[asset:preset:sec]` draws. Tags: `draw text erase
-move gen wait clear zoom style chapter subtitle sfx slide banner arrow highlight
-compare transition overlay counter watermark`. Presets: `TL TR BL BR HT HB LH RH
-center fullscreen`. `cursor=` and SVG `key=value` variants ride in the same tail.
-Full table: `internal/script/dsl.go` (`zen-board check --dsl`).
+`[tag:arg:arg key=value @x,y,w,h]` inside a narration line; a tag fires at the
+word that precedes it. Bare `[asset]` / `[asset:preset:sec]` draws. The table in
+`internal/script/dsl.go` is the grammar: the parser, the linter, the compiler and
+`zen-board check -dsl` all read it, so run `check -dsl` instead of guessing.
+
+Named parameters work on every placement tag: `id= dur= exit= layer= anchor=
+size= w= h= fit= color= cursor= mask= hand=` — and `w=`/`h=` must come as a pair. `cursor=` and SVG `key=value`
+variants ride in the same tail.
+
+| Genre verb | What it is for |
+|---|---|
+| `[character:robot id=bot anchor=br size=45%]` | persistent presenter: stays visible when `[zoom:]` points elsewhere, survives `[clear]`; re-using `id=` **replaces** the previous state instead of stacking a ghost |
+| `[sticker:meme_lol anchor=tr w=280 h=200 dur=2 exit=pop]` | pop-in decoration that leaves on its own |
+| `[caption:"NO WAY" anchor=HB size=110 color=#FFFF00 outline=8 dur=2 exit=pop]` | impact text; `size=` is glyph pixels and the raster keeps that size |
+| `[clear]` / `[clear:all]` | board wipe that keeps characters / wipe that does not |
+| `[arrow:@bot:@curve]`, `[highlight:@bot]` | `@id` addresses a placed element's box, resolved at compile time |
+
+`[overlay:]` stays as the low-level primitive (camera-dependent, removed by
+`[clear]`); prefer the three verbs above. A `layer=overlay` event is composited
+**after** the camera crop, so it keeps its position and pixel size while `[zoom:]`
+moves the board underneath — that is what makes a mascot a presenter and not scenery.
 
 ## Traps (all measured, not folklore)
 
-- **Typos are silent.** `[drw:robot]` is not consumed by any pattern: it is read
-  aloud by TTS and nothing is drawn. Nothing checks a prefix that failed to
-  match — validate with `check`.
-- **Nested tags panic-free but lossy.** `[text:"a [draw:x] b"]` consumes the outer
-  span only; the inner tag is gone and you get `E0003`. Never nest tags.
-- **Durations must be integers in the legacy tail form.** `[draw:robot:2.5]`
-  parses as a preset named `2.5`: 0 events, read aloud.
-- **Unknown preset = full canvas**, and the same unknown name becomes a camera
-  state, so an unrelated `[zoom:]` can go wrong later.
-- **`cursor=magic_wand` needs the preset installed** (`assets/cursors/<name>/`),
-  otherwise nothing is drawn; the renderer now falls back to `hand`.
-- **`[overlay:x]` cannot be removed.** Every persistent layer is `FRAME_FOREVER`
-  and `[clear]` wipes the whole board, including the mascot.
-- **A `[clear]`/`[transition:]` mid-video rewrites the `EndFrame` of every earlier
-  event** — that is why an overlay placed before it disappears.
-- **`[sfx:]` is a documented no-op.** It compiles to nothing.
-- **Wrong asset id** is a hard error only after the whole TTS stage has run
-  (~16s cold). Validate first.
-- `-fast`/`-preview` halve the canvas **before** compile, so every absolute
-  `@x,y` lands somewhere else. Never trust a `-fast` frame for layout.
-- Frame output is a pure function of `(frame, events, camera, style)`; a PNG is
-  the only artifact that tells you what the screen looks like. An MP4 tells a
-  text agent nothing.
+- **Typos are silent.** `[drw:robot]` matches no pattern: TTS reads it aloud and
+  nothing is drawn. Nothing checks a failed prefix at render time — `check` does.
+- **Nested tags are lossy.** `[text:"a [draw:x] b"]` consumes the outer span only
+  and reports `E0003`. Never nest tags.
+- **`[sfx:]` is a documented no-op** (`E0014`).
+- **`cursor=` needs the preset installed** under `assets/cursors/<name>/`,
+  otherwise the renderer falls back to `hand`.
+- **A `[clear]`/`[transition:]` rewrites the `EndFrame` of every earlier event.**
+  That is why a plain `[overlay:]` placed before one disappears; a `[character:]`
+  does not.
+- **`-fast`/`-preview` halve the canvas before compile**, so every absolute `@x,y`
+  lands elsewhere. `snapshot` refuses `-fast` for that reason.
+- `exit=` on a layer with no `dur=` is dropped (`W0009`); an exit scheduled past the
+  last frame is dropped (`W0010`); a caption bigger than its box or the canvas is
+  reported (`W0011`); `w=` without `h=` is ignored (`W0012`).
 
 ## Authoring rules
 
-- Assets: reference `assets/index.json` ids only (`assets list`). `test` is not
-  an asset.
-- Put `[zoom:reset]` before a wide shot; every event placed while the camera is
-  zoomed elsewhere is invisible.
+- Reference `assets/index.json` ids only (`assets list`). `test` is not an asset.
+- Put `[zoom:reset]` before a wide shot; a board layer placed while the camera
+  looks elsewhere is invisible. Overlay layers are exempt by design.
 - Keep one line = one sentence = one beat; timing is audio-first.
+- Frames are a pure function of `(frame, events, camera, style)`; the same script
+  renders to identical PNG bytes, so diff a snapshot instead of eyeballing a video.

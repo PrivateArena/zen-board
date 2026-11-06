@@ -1,4 +1,6 @@
-Meet our guide. [draw:funny_human_2d_comic_with_big_nose_fat_l:BR]
-Here is the city we are talking about. [zoom:LH] [draw:city]
-Our guide reacts. [erase:funny_human_2d_comic_with_big_nose_fat_l] [draw:comic_big_nose_fat_lung_screaming:BR]
-And now the payoff. [zoom:reset] [text:"He agrees":center:sans:56:bold]
+[chapter:"Guide"]Meet your guide. [character:funny_human_2d_comic_with_big_nose_fat_l id=guide anchor=br size=45%]
+This is the thing we are talking about. [zoom:LH] [draw:world]
+Your guide has an opinion about it. [zoom:reset] [character:comic_big_nose_fat_lung_screaming id=guide anchor=br size=45%]
+[caption:"A BIG DEAL" anchor=HB color=#FFFF00 outline=8 size=72 dur=2 exit=pop] [sticker:pyramids anchor=tl w=180 h=120 dur=2 exit=fade] Which is the whole point, and both of those leave on their own.
+The board wipes for the next beat, and the guide is still there. [clear]
+[zoom:reset] Because a presenter is not part of the board. [draw:city anchor=TR]

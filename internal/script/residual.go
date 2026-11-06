@@ -61,7 +61,7 @@ func residualSpanFindings(line string, consumed []bool, lineNo int, file string,
 		if isKnownTagPrefix(prefix) && hasDecimalTailArg(body) {
 			add(diag.E0007,
 				fmt.Sprintf("tag %q was not consumed: the legacy argument form cannot carry a decimal duration", open),
-				"use an integer duration ([draw:robot:3]) or name it ([draw:robot:dur=2.5] once supported)",
+				"use an integer duration ([draw:robot:3]) or name it ([draw:robot:dur=2.5])",
 				fmt.Sprintf("Warning: unparseable duration in tag %q at line %d col %d", body, lineNo, col))
 			continue
 		}

@@ -29,6 +29,8 @@ func newLintFixture(t *testing.T) *lintFixture {
 	write("robot.png")
 	write("city.png")
 	write("shield.svg")
+	write("meme_lol.png")
+	write("robot_happy.png")
 	write("cursors/hand/config.json")
 	return &lintFixture{dir: dir}
 }
@@ -56,6 +58,13 @@ func (l fixtureLookup) HasCursorPreset(name string) bool {
 func (l fixtureLookup) SupportsVariants(id string) bool {
 	_, err := os.Stat(filepath.Join(l.dir, id+".svg"))
 	return err == nil
+}
+
+// newGenreFixture adds the asset ids the genre examples use.
+func newGenreFixture(t *testing.T) *lintFixture {
+	t.Helper()
+	f := newLintFixture(t)
+	return f
 }
 
 func lintText(t *testing.T, f *lintFixture, text string) *diag.Report {
@@ -202,5 +211,99 @@ func TestLintOverRawBytesNotCleanedText(t *testing.T) {
 	lines, _ := ParseChecked(`Prose [draw:nosuchasset] more prose`, "x.zen")
 	if contains(lines[0].Text, "draw:") {
 		t.Error("fixture assumption broken: cleaned text still carries the tag")
+	}
+}
+
+// The genre tags are new, so every parameter they add is validated the day it exists.
+func TestLintGenreParameters(t *testing.T) {
+	cases := []struct {
+		name string
+		text string
+		want string
+	}{
+		{"unknown anchor", `[character:robot anchor=nowhere]`, diag.E0005},
+		{"unknown layer", `[character:robot layer=mystery]`, diag.E0006},
+		{"unknown exit", `[sticker:x dur=2 exit=bounce]`, diag.E0006},
+		{"bad colour", `[caption:"HI" color=reddish]`, diag.E0006},
+		{"unknown size unit", `[character:robot size=big]`, diag.E0004},
+		{"unknown asset", `[character:ghost_mascot]`, diag.E0001},
+		{"unknown key", `[caption:"HI" shadow=4]`, diag.E0006},
+		// A parameter the compiler does not act on must not be in the grammar.
+		{"unimplemented pop", `[sticker:city pop=true]`, diag.E0006},
+		{"layer on a board tag", `[draw:robot layer=overlay]`, diag.E0006},
+		{"camera-only reset as anchor", `[draw:robot anchor=reset]`, diag.E0005},
+	}
+	for _, tc := range cases {
+		report := lintText(t, newGenreFixture(t), tc.text)
+		if len(report.ByCode(tc.want)) == 0 {
+			t.Errorf("%s: expected %s, got %s", tc.name, tc.want, report)
+		}
+	}
+}
+
+func TestLintAcceptsTheGenreForms(t *testing.T) {
+	for _, text := range []string{
+		`[character:robot_happy anchor=br size=45% id=bot]`,
+		`[sticker:city anchor=tr w=280 h=160 dur=2 exit=pop]`,
+		`[caption:"IT WEDGES" anchor=bc color=#FFFF00 outline=6 size=110 dur=2.5]`,
+		`[clear:all]`,
+	} {
+		report := lintText(t, newGenreFixture(t), text)
+		if report.Blocked() {
+			t.Errorf("%s: blocked: %s", text, report)
+		}
+	}
+}
+
+// A named parameter is separated from the positional arguments by spaces, but that must
+// never eat an equals sign that is part of the author's prose.
+func TestLegacyFreeTextKeepsItsEqualsSign(t *testing.T) {
+	for _, text := range []string{
+		`[chapter:Act One]`,
+		`[banner:Sum 1+1=2]`,
+		`[caption:2+2=happy id=ch]`,
+	} {
+		report := lintText(t, newGenreFixture(t), text)
+		if report.Blocked() {
+			t.Errorf("%s: blocked: %s", text, report)
+		}
+	}
+
+	// A prose argument containing = stays one argument; a declared key still separates.
+	_, tag, ok := ParseTagSpec(`[banner:Final score 1+1=2 id=x]`)
+	if !ok {
+		t.Fatal("tag not resolved")
+	}
+	if _, hasID := tag.Key("id"); !hasID {
+		t.Errorf("named tail lost: parts=%q keys=%v", tag.Parts, tag.Keys)
+	}
+	if tag.Parts[0] != "Final score 1+1=2" {
+		t.Errorf("positional argument was split at the equals sign in the prose: %q", tag.Parts[0])
+	}
+}
+
+// A parameter only belongs in the grammar where the compiler acts on it. Promising
+// layer=, keep= or exit= on a tag that ignores them is the "documented no-op" trap this
+// plan exists to close, so those keys are refused outside the genre tags.
+func TestGenreOnlyParametersAreNotAdmittedEverywhere(t *testing.T) {
+	for _, tc := range []struct{ text, want string }{
+		{`[draw:robot layer=overlay]`, diag.E0006},
+		{`[text:"hi" keep=false]`, diag.E0006},
+		{`[draw:robot exit=fade]`, diag.E0006},
+		{`[character:robot layer=board keep=false exit=pop]`, ""},
+	} {
+		report := lintText(t, newGenreFixture(t), tc.text)
+		if got := len(report.ByCode(tc.want)); (got > 0) != (tc.want != "") {
+			t.Errorf("%s: %s present=%v want=%v: %s", tc.text, tc.want, got > 0, tc.want != "", report)
+		}
+	}
+}
+
+// "reset" is a camera instruction. Accepted as an anchor it resolved to the whole canvas,
+// which is the silent fallback the preset table exists to remove.
+func TestCameraOnlyNamesAreNotBoxes(t *testing.T) {
+	report := lintText(t, newGenreFixture(t), `[draw:robot anchor=reset]`)
+	if len(report.ByCode(diag.E0005)) == 0 {
+		t.Errorf("anchor=reset accepted: %s", report)
 	}
 }

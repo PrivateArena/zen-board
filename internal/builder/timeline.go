@@ -29,6 +29,13 @@ type TextRenderJob struct {
 	FontSize   float64
 	IsBold     bool
 	Style      string
+	// OutlinePx strokes the glyphs so caption text stays readable over artwork.
+	OutlinePx int
+	// ColourHex overrides the style-derived ink colour (#rrggbb).
+	ColourHex string
+	// PixelExact records that the raster is the final size: the engine blits it
+	// instead of scaling it to the layout box.
+	PixelExact bool
 }
 
 type GenRenderJob struct {
@@ -109,6 +116,18 @@ func (c *timelineCompiler) record(f diag.Finding) {
 // nextID returns the deterministic fallback identity for an event kind, e.g.
 // "draw#3". Counters are per-compile, so the same script always yields the
 // same ids.
+// newTextJob registers a rasterised text asset and returns its internal id. Every tag
+// that draws text goes through here, so the asset id is allocated in one place and the
+// rasterisation parameters are never re-derived later.
+func (c *timelineCompiler) newTextJob(job TextRenderJob) string { // ids are 0-based: __text_0 is the first
+	c.textAssetCount++
+	job.AssetID = fmt.Sprintf("__text_%d", c.textAssetCount-1)
+	c.textJobs = append(c.textJobs, job)
+	return job.AssetID
+}
+
+// nextID returns the deterministic fallback identity for an event kind, e.g. "draw#1".
+// Allocated per compile, in dispatch order, so two runs of one script agree.
 func (c *timelineCompiler) nextID(kind string) string {
 	if c.idCounters == nil {
 		c.idCounters = map[string]int{}
@@ -235,12 +254,21 @@ func (c *timelineCompiler) processAction(pl *model.ProcessedLine, action *model.
 
 	rawStartFrame := int(triggerTime * float64(c.conf.FPS))
 
+	ctx := &actionContext{pl: pl, action: action, triggerTime: triggerTime, rawStartFrame: rawStartFrame}
+	// Resolve the tag against the grammar table once, before anything reads its
+	// arguments. This is what lets `[draw:robot:TR id=bot dur=6]` and
+	// `[draw:robot:TR:6]` compile through the same code path.
+	ctx.parseTag()
+	if id := ctx.key("id"); id != "" {
+		action.ID = id
+	}
+
 	// Handle custom duration parameters or defaults
 	revealDuration := 2.0
 	actionTag := action.Tag
 	preset := ""
 	if !isSpecialAction(action.Tag) {
-		parts := tagParts(actionTag)
+		parts := ctx.positional()
 		if len(parts) > 1 {
 			if dur, err := strconv.ParseFloat(parts[len(parts)-1], 64); err == nil {
 				revealDuration = dur
@@ -254,6 +282,13 @@ func (c *timelineCompiler) processAction(pl *model.ProcessedLine, action *model.
 			preset = parts[1]
 		}
 	}
+	// A named parameter wins over the positional spelling, as the grammar promises.
+	if v := ctx.key("anchor"); v != "" {
+		preset = v
+	}
+	if v, ok := tagNum(ctx.tag, "dur"); ok {
+		revealDuration = v
+	}
 
 	// For draw/gen/text reveals: delay past any concurrent zoom transition so
 	// the hand-draw animation never plays while the camera is still panning.
@@ -266,17 +301,11 @@ func (c *timelineCompiler) processAction(pl *model.ProcessedLine, action *model.
 		revealDuration = action.RevealDuration
 	}
 
-	ctx := &actionContext{
-		pl:             pl,
-		action:         action,
-		triggerTime:    triggerTime,
-		rawStartFrame:  rawStartFrame,
-		startFrame:     startFrame,
-		endFrame:       startFrame + int(revealDuration*float64(c.conf.FPS)),
-		actionTag:      actionTag,
-		preset:         preset,
-		revealDuration: revealDuration,
-	}
+	ctx.startFrame = startFrame
+	ctx.endFrame = startFrame + int(revealDuration*float64(c.conf.FPS))
+	ctx.actionTag = actionTag
+	ctx.preset = preset
+	ctx.revealDuration = revealDuration
 	if err := c.dispatch(ctx); err != nil {
 		c.recordArity(ctx, err)
 	}
@@ -661,7 +690,25 @@ func PrepareAssets(conf *model.Project, engine *render.Engine, timeline *model.T
 		if job.Style == constant.STYLE_BLACKBOARD {
 			textColor = color.RGBA{R: 255, G: 255, B: 255, A: 255}
 		}
-		img, err := render.RenderText(job.Content, job.FontFamily, job.FontSize, job.IsBold, textColor)
+		if job.ColourHex != "" {
+			if c2, cerr := parseHexColour(job.ColourHex); cerr == nil {
+				textColor = c2
+			} else {
+				warn(diag.Finding{
+					Code: diag.W0008, Severity: diag.SeverityWarning, Stage: "prepare",
+					Message: fmt.Sprintf("text colour %q is not #rrggbb; using the style ink colour: %v", job.ColourHex, cerr),
+					FixHint: "write colour=#rrggbb",
+				})
+			}
+		}
+		img, err := render.RenderTextStyled(render.TextOptions{
+			Text:       job.Content,
+			FontPreset: job.FontFamily,
+			Size:       job.FontSize,
+			Bold:       job.IsBold,
+			Colour:     textColor,
+			OutlinePx:  job.OutlinePx,
+		})
 		if err != nil {
 			warn(diag.Finding{
 				Code: diag.W0008, Severity: diag.SeverityWarning, Stage: "prepare",
@@ -669,6 +716,28 @@ func PrepareAssets(conf *model.Project, engine *render.Engine, timeline *model.T
 				FixHint: "check the font preset and that the content is not empty",
 			})
 			continue
+		}
+		// A caption is blitted at its own pixel size, so it can outgrow the box it was
+		// anchored to - or the canvas - and be clipped. Say so here, before any frame is
+		// rendered, instead of leaving it to be discovered in the video.
+		if job.PixelExact {
+			w, h := img.Bounds().Dx(), img.Bounds().Dy()
+			box := textPlacementBox(timeline, job.AssetID, conf)
+			if w > conf.Width || h > conf.Height {
+				warn(diag.Finding{
+					Code: diag.W0011, Severity: diag.SeverityWarning, Stage: "prepare",
+					Message: fmt.Sprintf("caption %q is %dx%d px, larger than the %dx%d canvas, so it will be clipped",
+						truncateText(job.Content, 40), w, h, conf.Width, conf.Height),
+					FixHint: fmt.Sprintf("lower size= (it is %d) or widen the canvas", int(job.FontSize)),
+				})
+			} else if box.Dx() > 0 && w > box.Dx() {
+				warn(diag.Finding{
+					Code: diag.W0011, Severity: diag.SeverityWarning, Stage: "prepare",
+					Message: fmt.Sprintf("caption %q is %d px wide but its placement box is %d px, so it will overflow the box it was anchored to",
+						truncateText(job.Content, 40), w, box.Dx()),
+					FixHint: "use a wider anchor= (HT, HB, fullscreen) or lower size=",
+				})
+			}
 		}
 		engine.RegisterAsset(job.AssetID, img)
 	}
@@ -707,4 +776,43 @@ func assetFinding(code string, ev model.FrameEvent, message, hint string) diag.F
 		FixHint:   hint,
 		LegacyMsg: "Warning: " + message,
 	}
+}
+
+// parseHexColour reads #rrggbb or rrggbb, the two spellings a script can carry.
+func parseHexColour(v string) (color.RGBA, error) {
+	v = strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(v), "#"))
+	if len(v) != 6 {
+		return color.RGBA{}, fmt.Errorf("%q is not 6 hex digits", v)
+	}
+	n, err := strconv.ParseUint(v, 16, 32)
+	if err != nil {
+		return color.RGBA{}, err
+	}
+	return color.RGBA{R: uint8(n >> 16), G: uint8(n >> 8), B: uint8(n), A: 255}, nil
+}
+
+// truncateText shortens a string for a one-line diagnostic, on a rune boundary.
+func truncateText(s string, n int) string {
+	if n < 2 {
+		n = 2
+	}
+	r := []rune(s)
+	if len(r) <= n {
+		return s
+	}
+	return string(r[:n-1]) + "…"
+}
+
+// textPlacementBox finds the box a rasterised text asset was placed into.
+func textPlacementBox(timeline *model.Timeline, assetID string, conf *model.Project) image.Rectangle {
+	for _, ev := range timeline.Events {
+		if ev.TargetImage != assetID {
+			continue
+		}
+		if ev.Width > 0 && ev.Height > 0 {
+			return image.Rect(ev.X, ev.Y, ev.X+ev.Width, ev.Y+ev.Height)
+		}
+		return image.Rect(0, 0, conf.Width, conf.Height)
+	}
+	return image.Rectangle{}
 }

@@ -2,6 +2,9 @@ package script
 
 import (
 	"regexp"
+
+	"zen-board/internal/constant"
+	"zen-board/internal/model"
 )
 
 // ActionSpec is one entry of the scripting grammar. This table is the single
@@ -72,19 +75,25 @@ const (
 	StatusNoop   = "noop"
 )
 
-// The 21 patterns the parser has always inlined, now owned by the table. They
-// are reproduced byte-for-byte: TestPatternTableMatchesLegacy proves the compiled
-// regexps equal the historical ones, and the parser matches through this table.
+// The patterns the parser has always inlined, now owned by the table. They are
+// reproduced byte-for-byte except where the grammar was deliberately widened, and
+// TestPatternTableMatchesLegacy proves it: the compiled regexps must equal the historical
+// ones, or differ only where that test records an accepted change.
 var (
-	reDraw      = regexp.MustCompile(`\[draw:([^\]@:]+)((?:[:\w-]+(?:=[^\]@:]+)?)*)(?:@([\d,]+))?\]`)
-	reTargetXY  = regexp.MustCompile(`\[text:([^\]@]+)(?:@([\d,]+))?\]`)
-	reErase     = regexp.MustCompile(`\[erase:([^\]@]+)(?:@([\d,]+))?\]`)
-	reEraseAll  = regexp.MustCompile(`\[erase:(\*)\]`)
-	reMove      = regexp.MustCompile(`\[move:([^\]@]+)(?:@([\d,]+))?\]`)
-	reGen       = regexp.MustCompile(`\[gen:([^\]@]+)(?:@([\d,]+))?\]`)
-	reWait      = regexp.MustCompile(`\[wait:([\d.]+)\]`)
-	reClear     = regexp.MustCompile(`\[clear\]`)
-	reOpenEnded = map[string]*regexp.Regexp{
+	// The draw tail is a sequence of `:segment` groups, and a segment may hold several
+	// named parameters separated by spaces - [draw:robot:TR id=bot dur=6] - which is the
+	// spelling `check -dsl` prints. The historical class could not express a space, so the
+	// documented form of its own flagship tag was not consumed.
+	reDraw        = regexp.MustCompile(`\[draw:([^\]@:]+)((?:[:\w -]+(?:=[^\]@:]+)?)*)(?:@([\d,]+))?\]`)
+	reTargetXY    = regexp.MustCompile(`\[text:([^\]@]+)(?:@([\d,]+))?\]`)
+	reErase       = regexp.MustCompile(`\[erase:([^\]@]+)(?:@([\d,]+))?\]`)
+	reEraseAll    = regexp.MustCompile(`\[erase:(\*)\]`)
+	reMove        = regexp.MustCompile(`\[move:([^\]@]+)(?:@([\d,]+))?\]`)
+	reGen         = regexp.MustCompile(`\[gen:([^\]@]+)(?:@([\d,]+))?\]`)
+	reWait        = regexp.MustCompile(`\[wait:([\d.]+)\]`)
+	reClear       = regexp.MustCompile(`\[clear\]`)
+	reClearScoped = regexp.MustCompile(`\[clear:(all|board)\]`)
+	reOpenEnded   = map[string]*regexp.Regexp{
 		"zoom":       regexp.MustCompile(`\[zoom:([^\]]+)\]`),
 		"style":      regexp.MustCompile(`\[style:([^\]]+)\]`),
 		"chapter":    regexp.MustCompile(`\[chapter:([^\]]+)\]`),
@@ -97,14 +106,31 @@ var (
 		"compare":    regexp.MustCompile(`\[compare:([^\]]+)\]`),
 		"transition": regexp.MustCompile(`\[transition:([^\]]+)\]`),
 		"overlay":    regexp.MustCompile(`\[overlay:([^\]]+)\]`),
+		"character":  regexp.MustCompile(`\[character:([^\]]+)\]`),
+		"sticker":    regexp.MustCompile(`\[sticker:([^\]]+)\]`),
+		"caption":    regexp.MustCompile(`\[caption:([^\]]+)\]`),
 		"counter":    regexp.MustCompile(`\[counter:([^\]]+)\]`),
 		"watermark":  regexp.MustCompile(`\[watermark:([^\]]+)\]`),
 	}
 )
 
-// Preset names accepted by the layout engine, and the authoritative list the
-// linter validates against (E0005).
-var presetNames = []string{"TL", "TR", "BL", "BR", "HT", "HB", "LH", "RH", "center", "fullscreen"}
+// presetNames is the layout vocabulary, taken from the package that resolves the boxes
+// (model/layout.go), so the linter can never accept a name the renderer would map to
+// "the whole canvas". The two historical spellings the engine treats as the full canvas
+// stay valid.
+//
+// PRESET_NAMES_SOURCE: model.LayoutPresets()
+// the boxes. It used to be a hand-written list here, which drifted from the renderer:
+// the linter accepted names the engine mapped to "the whole canvas", and rejected
+// anchors it would have honoured (E0005).
+var presetNames = layoutVocabulary()
+
+// layoutVocabulary is the engine's box list and nothing else. The camera-only spelling
+// "reset" is appended where a zoom is expected (see the zoom spec); accepting it as an
+// anchor would resolve to the whole canvas, which is the drift this table exists to stop.
+func layoutVocabulary() []string {
+	return model.LayoutPresets()
+}
 
 // CursorPresets returns the cursor vocabulary that is always valid. Additional
 // presets may exist on disk; the linter asks the catalog about those.
@@ -128,17 +154,42 @@ var (
 	arrowStyles      = []string{"straight", "curved", "double", "dashed"}
 	highlightStyles  = []string{"rect", "circle", "pulse"}
 	slideTransitions = []string{"none", "fade", "pop", "slide-left", "slide-right", "slide-up", "slide-down", "fade-black", "fade-white", "wipe-left", "wipe-right", "wipe-up", "wipe-down"}
-	fitModes         = []string{"fit", "fill", "stretch"}
+	fitModes         = []string{"fit", "fill", "stretch", "native"}
 	watermarkPos     = []string{"TL", "TR", "BL", "BR"}
 	subtitleStates   = []string{"top", "bottom", "off"}
 )
 
-// commonKeys are the parameters every placement tag accepts.
+// commonKeys are the parameters every placement tag accepts. Restricted to what the
+// compiler actually acts on for every tag: `exit=`, `layer=` and `keep=` are honoured by
+// the genre tags (see genreKeys), where a second event and the layer fields exist.
 var commonKeys = []Param{
 	{Name: "id", Kind: KindText, Help: "addressable identity for @refs, [clear] survival and character state switching"},
 	{Name: "dur", Kind: KindNumber, Unit: "s", Help: "lifetime window; without it a placed layer persists forever"},
-	{Name: "exit", Kind: KindKeyword, Enum: []string{"fade", "pop", "slide"}, Help: "exit animation, emitted as a second event"},
-	{Name: "layer", Kind: KindKeyword, Enum: []string{"board", "overlay"}, Default: "board", Help: "draw order and camera behaviour"},
+}
+
+// captionSizeIsPixels overrides the one parameter whose unit differs by tag: for an
+// image layer size= is a percentage of the canvas, for a caption it is the height of
+// the glyphs in pixels. Printing the wrong unit would make `check -dsl` lie.
+var captionSizeIsPixels = []Param{{Name: "size", Kind: KindNumber, Unit: "px", Help: "height of the glyphs"}}
+
+// genreKeys are the parameters only the genre tags act on: they need the Layer, Sticky
+// and exit-event fields, which the low-level tags do not set.
+var genreKeys = []Param{
+	{Name: "layer", Kind: KindKeyword, Enum: []string{"board", "overlay"}, Default: "overlay", Help: "overlay keeps the layer above the camera; board makes it ordinary"},
+	{Name: "exit", Kind: KindKeyword, Enum: []string{constant.EXIT_FADE, constant.EXIT_POP}, Help: "exit animation, emitted as a second event"},
+	{Name: "keep", Kind: KindKeyword, Enum: []string{"true", "false"}, Default: "true", Help: "survive [clear]"},
+	{Name: "opacity", Kind: KindNumber, Default: "1", Help: "layer alpha"},
+}
+
+// textSizesArePixels overrides size= for the tags that set type, so `check -dsl` cannot
+// print a percentage where the handler reads pixels.
+var textSizesArePixels = []Param{{Name: "size", Kind: KindNumber, Unit: "px", Help: "height of the glyphs"}}
+
+// captionKeys are the type-specific parameters of [caption:]. outline= and align= are
+// here and not in genreKeys because only a text layer has glyphs to stroke or centre.
+var captionKeys = []Param{
+	{Name: "outline", Kind: KindNumber, Unit: "px", Help: "stroke around the glyphs, so text stays legible over artwork"},
+	{Name: "align", Kind: KindKeyword, Enum: []string{constant.ALIGN_LEFT, constant.ALIGN_CENTRE, constant.ALIGN_RIGHT}, Default: constant.ALIGN_CENTRE},
 }
 
 // placementKeys are shared by the tags that place a visual element.
@@ -149,22 +200,39 @@ var placementKeys = []Param{
 	{Name: "h", Kind: KindNumber, Unit: "px"},
 	{Name: "fit", Kind: KindKeyword, Enum: fitModes, Default: "fit"},
 	{Name: "color", Kind: KindColor, Help: "#rrggbb"},
-	{Name: "keep", Kind: KindKeyword, Enum: []string{"true", "false"}, Default: "true", Help: "survive [clear]"},
 	{Name: "cursor", Kind: KindKeyword, Enum: cursorNames, Default: "hand"},
 	{Name: "mask", Kind: KindKeyword, Enum: maskNames},
 	{Name: "hand", Kind: KindKeyword, Enum: handNames},
 }
 
+// merge concatenates parameter groups in order, letting a later group override an
+// earlier one by name. That is how [caption:] turns size= from a canvas percentage into
+// a glyph height without duplicating the shared placement list.
 func merge(params ...[]Param) []Param {
 	var out []Param
-	for _, p := range params {
-		out = append(out, p...)
+	index := map[string]int{}
+	for _, group := range params {
+		for _, p := range group {
+			if at, seen := index[p.Name]; seen {
+				out[at] = p
+				continue
+			}
+			index[p.Name] = len(out)
+			out = append(out, p)
+		}
 	}
 	return out
 }
 
 func openEnded(tag string, positional []Param, keys []Param, minArgs, maxArgs int, emits []string, status, notes string) ActionSpec {
+	var assetArgs []string
+	for _, p := range positional {
+		if p.Kind == KindAsset {
+			assetArgs = append(assetArgs, p.Name)
+		}
+	}
 	return ActionSpec{
+		AssetArgs:   assetArgs,
 		Tag:         tag,
 		Status:      status,
 		Patterns:    []*regexp.Regexp{reOpenEnded[tag]},
@@ -192,9 +260,10 @@ func specs() []ActionSpec {
 				{Name: "preset", Kind: KindPreset, Enum: presetNames},
 				{Name: "duration", Kind: KindNumber, Unit: "s", Default: "2"},
 			},
-			Keys:        merge(commonKeys, placementKeys),
-			MinArgs:     1,
-			MaxArgs:     3,
+			Keys:    merge(commonKeys, placementKeys),
+			MinArgs: 1,
+			MaxArgs: 3,
+			// draw has no pixel type: size= is a percentage of the canvas here.
 			AssetArgs:   []string{"asset"},
 			EmitsEvents: []string{"draw", "static"},
 			Notes:       "hand-drawn reveal of an asset; persists until [clear] unless dur= is given",
@@ -208,10 +277,10 @@ func specs() []ActionSpec {
 				{Name: "content", Kind: KindText},
 				{Name: "preset", Kind: KindPreset, Enum: presetNames},
 				{Name: "font", Kind: KindKeyword, Enum: []string{"sans", "serif", "mono"}, Default: "sans"},
-				{Name: "size", Kind: KindNumber, Unit: "px", Default: "48"},
+				{Name: "size", Kind: KindNumber, Unit: "px", Default: "48", Help: "height of the glyphs"},
 				{Name: "weight", Kind: KindKeyword, Enum: []string{"regular", "bold"}, Default: "regular"},
 			},
-			Keys:        merge(commonKeys, placementKeys),
+			Keys:        merge(commonKeys, placementKeys, textSizesArePixels),
 			MinArgs:     1,
 			MaxArgs:     5,
 			EmitsEvents: []string{"text", "static"},
@@ -274,11 +343,12 @@ func specs() []ActionSpec {
 		{
 			Tag:      "clear",
 			Status:   StatusStable,
-			Patterns: []*regexp.Regexp{reClear},
-			MinArgs:  0, MaxArgs: 0,
-			Keys:        []Param{{Name: "scope", Kind: KindKeyword, Enum: []string{"board", "all"}, Default: "board"}},
+			Patterns: []*regexp.Regexp{reClear, reClearScoped},
+			MinArgs:  0, MaxArgs: 1,
+			// The scope arrives positionally, because the tag is spelled [clear:all].
+			Positional:  []Param{{Name: "scope", Kind: KindKeyword, Enum: []string{"board", "all"}, Default: "board"}},
 			EmitsEvents: []string{"clear"},
-			Notes:       "wipe the board",
+			Notes:       "wipe the board and keep the characters; [clear:all] wipes everything",
 		},
 		openEnded("zoom",
 			[]Param{{Name: "preset", Kind: KindPreset, Enum: append([]string{"reset"}, presetNames...)}},
@@ -358,6 +428,21 @@ func specs() []ActionSpec {
 				{Name: "duration", Kind: KindNumber, Unit: "s", Default: "0.5"},
 			},
 			nil, 1, 2, []string{"transition"}, StatusStable, "scene change; truncates every earlier event at its midpoint"),
+		openEnded("character",
+			[]Param{{Name: "asset", Kind: KindAsset}},
+			merge(commonKeys, placementKeys, genreKeys), 1, 1,
+			[]string{constant.EVENT_OVERLAY}, StatusStable,
+			"persistent presenter layer: stays visible under [zoom:], survives [clear], replaces its own previous state by id"),
+		openEnded("sticker",
+			[]Param{{Name: "asset", Kind: KindAsset}},
+			merge(commonKeys, placementKeys, genreKeys), 1, 1,
+			[]string{constant.EVENT_OVERLAY}, StatusStable,
+			"pop-in decoration on the overlay layer; exit= takes it away without [clear]"),
+		openEnded("caption",
+			[]Param{{Name: "content", Kind: KindText}},
+			merge(commonKeys, placementKeys, genreKeys, captionSizeIsPixels, captionKeys), 1, 1,
+			[]string{constant.EVENT_TEXT}, StatusStable,
+			"impact text: size= is pixels, outline= keeps it legible, drawn above the board"),
 		openEnded("counter",
 			[]Param{
 				{Name: "from", Kind: KindNumber},
@@ -380,6 +465,31 @@ func All() []ActionSpec {
 }
 
 // ByTag looks a spec up by its bracket vocabulary ("draw", "erase_all", "clear").
+// DeclaresKey reports whether a tag's grammar defines `key` as a parameter, positional or
+// named - including the historical aliases, so `seconds=` counts as `dur=`.
+func DeclaresKey(tag, key string) bool {
+	spec, ok := ByTag(tag)
+	if !ok {
+		return false
+	}
+	_, found := spec.findParam(spec.parameterName(key))
+	return found
+}
+
+// IsAuthoringKey reports whether a `word=value` names a parameter of the engine rather
+// than an attribute of the artwork. Those must never be painted into an SVG.
+func IsAuthoringKey(key string) bool {
+	return authoringKeys[key]
+}
+
+// authoringKeys are the parameters every placement tag understands. They are also the
+// only ones the draw tag lifts out of its SVG variant map, so a legacy script that used
+// color= or fill= as a real SVG attribute keeps rendering the same way.
+var authoringKeys = map[string]bool{
+	"id": true, "dur": true, "exit": true, "layer": true, "keep": true,
+	"anchor": true, "align": true, "seconds": true,
+}
+
 func ByTag(tag string) (ActionSpec, bool) {
 	for _, s := range table {
 		if s.Tag == tag {
@@ -486,11 +596,40 @@ var canonicalExamples = map[string][]string{
 	"compare":    {"[compare:city:pyramids]", `[compare:city:pyramids:"Modern":"Ancient"]`},
 	"transition": {"[transition:fade-black:0.5]"},
 	"overlay":    {"[overlay:world:0.3:fullscreen]"},
+	"character":  {"[character:robot_happy anchor=br size=45%]", "[character:robot_thinking id=bot]"},
+	"sticker":    {"[sticker:meme_lol anchor=tr w=280 h=200 dur=2 exit=pop]"},
+	"caption":    {`[caption:"IT WEDGES" anchor=bc color=#FFFF00 outline=6 size=110 dur=2.5 exit=pop]`},
 	"counter":    {"[counter:0:100:2:%d:center]"},
 }
 
 // TagExamples returns the canonical spellings of a spec, in the order `check
 // --dsl` prints them.
+// hasParam reports whether the spec defines a parameter under this name.
+func (s ActionSpec) hasParam(name string) bool {
+	for _, p := range s.Positional {
+		if p.Name == name {
+			return true
+		}
+	}
+	for _, p := range s.Keys {
+		if p.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
 func (s ActionSpec) TagExamples() []string {
 	return append([]string(nil), canonicalExamples[s.Tag]...)
+}
+
+// parameterName maps a spelling used in a tag to the parameter the spec declares.
+func (s ActionSpec) parameterName(spelling string) string {
+	if _, ok := s.findParam(spelling); ok {
+		return spelling
+	}
+	if alias, ok := paramAliases[spelling]; ok {
+		return alias
+	}
+	return spelling
 }

@@ -1,21 +1,31 @@
 [
   {
-    "Text": "Meet our guide.",
+    "Text": "Meet your guide.",
     "Actions": [
       {
-        "Tag": "funny_human_2d_comic_with_big_nose_fat_l:BR",
+        "Tag": "chapter:\"Guide\"",
+        "WordIndex": 0,
+        "X": 0,
+        "Y": 0,
+        "W": 0,
+        "H": 0,
+        "TriggerAfterWord": false,
+        "AssetVariant": null
+      },
+      {
+        "Tag": "character:funny_human_2d_comic_with_big_nose_fat_l id=guide anchor=br size=45%",
         "WordIndex": 3,
         "X": 0,
         "Y": 0,
         "W": 0,
         "H": 0,
         "TriggerAfterWord": false,
-        "AssetVariant": {}
+        "AssetVariant": null
       }
     ]
   },
   {
-    "Text": "Here is the city we are talking about.",
+    "Text": "This is the thing we are talking about.",
     "Actions": [
       {
         "Tag": "zoom:LH",
@@ -28,7 +38,7 @@
         "AssetVariant": null
       },
       {
-        "Tag": "city",
+        "Tag": "world",
         "WordIndex": 8,
         "X": 0,
         "Y": 0,
@@ -40,11 +50,11 @@
     ]
   },
   {
-    "Text": "Our guide reacts.",
+    "Text": "Your guide has an opinion about it.",
     "Actions": [
       {
-        "Tag": "erase:funny_human_2d_comic_with_big_nose_fat_l",
-        "WordIndex": 3,
+        "Tag": "zoom:reset",
+        "WordIndex": 7,
         "X": 0,
         "Y": 0,
         "W": 0,
@@ -53,39 +63,79 @@
         "AssetVariant": null
       },
       {
-        "Tag": "comic_big_nose_fat_lung_screaming:BR",
-        "WordIndex": 3,
+        "Tag": "character:comic_big_nose_fat_lung_screaming id=guide anchor=br size=45%",
+        "WordIndex": 7,
+        "X": 0,
+        "Y": 0,
+        "W": 0,
+        "H": 0,
+        "TriggerAfterWord": false,
+        "AssetVariant": null
+      }
+    ]
+  },
+  {
+    "Text": "Which is the whole point, and both of those leave on their own.",
+    "Actions": [
+      {
+        "Tag": "caption:\"A BIG DEAL\" anchor=HB color=#FFFF00 outline=8 size=72 dur=2 exit=pop",
+        "WordIndex": 0,
+        "X": 0,
+        "Y": 0,
+        "W": 0,
+        "H": 0,
+        "TriggerAfterWord": false,
+        "AssetVariant": null
+      },
+      {
+        "Tag": "sticker:pyramids anchor=tl w=180 h=120 dur=2 exit=fade",
+        "WordIndex": 0,
+        "X": 0,
+        "Y": 0,
+        "W": 0,
+        "H": 0,
+        "TriggerAfterWord": false,
+        "AssetVariant": null
+      }
+    ]
+  },
+  {
+    "Text": "The board wipes for the next beat, and the guide is still there.",
+    "Actions": [
+      {
+        "Tag": "clear",
+        "WordIndex": 13,
+        "X": 0,
+        "Y": 0,
+        "W": 0,
+        "H": 0,
+        "TriggerAfterWord": false,
+        "AssetVariant": null
+      }
+    ]
+  },
+  {
+    "Text": "Because a presenter is not part of the board.",
+    "Actions": [
+      {
+        "Tag": "zoom:reset",
+        "WordIndex": 0,
+        "X": 0,
+        "Y": 0,
+        "W": 0,
+        "H": 0,
+        "TriggerAfterWord": false,
+        "AssetVariant": null
+      },
+      {
+        "Tag": "city anchor=TR",
+        "WordIndex": 9,
         "X": 0,
         "Y": 0,
         "W": 0,
         "H": 0,
         "TriggerAfterWord": false,
         "AssetVariant": {}
-      }
-    ]
-  },
-  {
-    "Text": "And now the payoff.",
-    "Actions": [
-      {
-        "Tag": "zoom:reset",
-        "WordIndex": 4,
-        "X": 0,
-        "Y": 0,
-        "W": 0,
-        "H": 0,
-        "TriggerAfterWord": false,
-        "AssetVariant": null
-      },
-      {
-        "Tag": "text:\"He agrees\":center:sans:56:bold",
-        "WordIndex": 4,
-        "X": 0,
-        "Y": 0,
-        "W": 0,
-        "H": 0,
-        "TriggerAfterWord": false,
-        "AssetVariant": null
       }
     ]
   }

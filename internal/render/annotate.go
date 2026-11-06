@@ -503,6 +503,24 @@ func drawCompareLabel(e *Engine, buf *image.RGBA, text string, x, y int, isLeft 
 	draw.Draw(buf, image.Rect(x+padX, y, x+padX+tw, y+th), txtImg, image.Point{}, draw.Over)
 }
 
+// fitInside scales the source to fit the box without distortion and centres it there.
+// A box that came from size= or an anchor band has the canvas's aspect, not the artwork's.
+func fitInside(src image.Image, ox, oy, ow, oh int) (int, int, int, int) {
+	sw, sh := src.Bounds().Dx(), src.Bounds().Dy()
+	if sw <= 0 || sh <= 0 || ow <= 0 || oh <= 0 {
+		return ow, oh, ox, oy
+	}
+	scale := math.Min(float64(ow)/float64(sw), float64(oh)/float64(sh))
+	w, h := int(float64(sw)*scale), int(float64(sh)*scale)
+	if w < 1 {
+		w = 1
+	}
+	if h < 1 {
+		h = 1
+	}
+	return w, h, ox + (ow-w)/2, oy + (oh-h)/2
+}
+
 func handleOverlayEvent(e *Engine, frameNum int, ev model.FrameEvent, buf *image.RGBA, visibility float64) {
 	e.AssetMu.RLock()
 	img, ok := e.Assets[ev.TargetImage]
@@ -515,13 +533,42 @@ func handleOverlayEvent(e *Engine, frameNum int, ev model.FrameEvent, buf *image
 	canvasH := buf.Bounds().Dy()
 
 	var ox, oy, ow, oh int
-	preset := ev.ZoomFocus
-	if preset == constant.PRESET_FULLSCREEN || preset == "" {
-		ox, oy, ow, oh = 0, 0, canvasW, canvasH
+	if ev.Width > 0 && ev.Height > 0 {
+		// The layer was placed with an explicit box: anchor= with size=, w=/h=, or
+		// @x,y,w,h. Ignoring it would make `size=` on [character:] do nothing.
+		ox, oy, ow, oh = ev.X, ev.Y, ev.Width, ev.Height
 	} else {
-		ox, oy, ow, oh = model.GetPresetLayout(preset, canvasW, canvasH)
+		preset := ev.ZoomFocus
+		if preset == constant.PRESET_FULLSCREEN || preset == "" {
+			ox, oy, ow, oh = 0, 0, canvasW, canvasH
+		} else {
+			ox, oy, ow, oh = model.GetPresetLayout(preset, canvasW, canvasH)
+		}
 	}
 
+	// Fit the layer inside its box instead of stretching it to it: a box derived from
+	// size= or an anchor band has the canvas's aspect, not the artwork's.
+	boxW, boxH := ow, oh
+	srcW, srcH := img.Bounds().Dx(), img.Bounds().Dy()
+	if srcW > 0 && srcH > 0 && ev.Layer == constant.LAYER_OVERLAY {
+		scale := math.Min(float64(boxW)/float64(srcW), float64(boxH)/float64(srcH))
+		ow = int(float64(srcW) * scale)
+		oh = int(float64(srcH) * scale)
+		if ow < 1 {
+			ow = 1
+		}
+		if oh < 1 {
+			oh = 1
+		}
+		ox += (boxW - ow) / 2
+		oy += (boxH - oh) / 2
+	}
+	// A presenter layer keeps its own aspect ratio inside the box it was given: size=
+	// describes how big the element is, not how wide its band is, and stretching a square
+	// mascot into a 2:1 anchor box is exactly the distortion the plan calls a bad frame.
+	if ev.Layer == constant.LAYER_OVERLAY {
+		ow, oh, ox, oy = fitInside(img, ox, oy, ow, oh)
+	}
 	scaled := e.cachedDerived(scaleKey("overlay", ev.TargetImage, ow, oh), func() image.Image {
 		return scaleImage(img, ow, oh)
 	})

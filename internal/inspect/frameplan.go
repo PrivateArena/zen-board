@@ -20,17 +20,21 @@ const (
 	EventsMid   EventSelector = "mid"
 	EventsEnd   EventSelector = "end"
 	EventsAll   EventSelector = "all"
+	// EventsNone plans only what -at / -frame / -every asked for. Without it,
+	// `snapshot -frame 90` would also return every event moment, which is not what
+	// "give me this one frame" means.
+	EventsNone EventSelector = "none"
 )
 
 // SelectorOf validates a user-supplied selector.
 func SelectorOf(v string) (EventSelector, error) {
 	switch EventSelector(v) {
-	case EventsStart, EventsMid, EventsEnd, EventsAll:
+	case EventsStart, EventsMid, EventsEnd, EventsAll, EventsNone:
 		return EventSelector(v), nil
 	case "":
 		return EventsAll, nil
 	}
-	return "", fmt.Errorf("unknown -events value %q: use start, mid, end or all", v)
+	return "", fmt.Errorf("unknown -events value %q: use start, mid, end, all or none", v)
 }
 
 // Request is the frame-addressing request of one snapshot run. It is plain data so

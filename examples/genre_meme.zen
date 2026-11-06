@@ -1,5 +1,5 @@
-[banner:"IT WEDGES":"Nobody: ... absolutely nobody:"]
+[banner:"THE MEME BEAT":"caption, sticker, punchline"]
 Here is the setup. [zoom:reset][draw:pyramids:LH]
-[slide:city:center:pop] And here is the punchline, at full size.
-[zoom:reset] [text:"NO WAY":center:sans:110:bold] [highlight:600,300,700,400:pulse:2]
-[transition:fade-black:0.5] Back to the robot, who saw it coming. [clear][draw:robot:center]
+[slide:city:center:pop] And here is the reversal, full bleed. [transition:fade-black:0.5] [clear]
+[caption:"NO WAY" anchor=HB color=#FFFF00 outline=8 size=96 dur=2 exit=pop] [sticker:robot anchor=tr w=220 h=220 dur=2 exit=fade] That is the punchline, and it leaves on its own.
+[zoom:reset] Nothing needed [erase:*] to take the caption away. [draw:world:center]

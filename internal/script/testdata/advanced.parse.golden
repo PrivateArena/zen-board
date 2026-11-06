@@ -148,16 +148,14 @@
         "AssetVariant": null
       },
       {
-        "Tag": "robot:TR",
+        "Tag": "robot:TR cursor=magic_wand",
         "WordIndex": 0,
         "X": 0,
         "Y": 0,
         "W": 0,
         "H": 0,
         "TriggerAfterWord": false,
-        "AssetVariant": {
-          "cursor": "magic_wand"
-        }
+        "AssetVariant": {}
       }
     ]
   },

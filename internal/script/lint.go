@@ -2,6 +2,7 @@ package script
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"zen-board/internal/diag"
@@ -72,6 +73,7 @@ func Lint(src *Source, lookup AssetLookup, opts LintOptions) *diag.Report {
 			l.validateArity(spec, tag, act)
 			l.validateCoords(spec, tag, act)
 			l.validateEnums(spec, tag, act)
+			l.validateValueKind(spec, tag, act)
 			l.validateNoop(spec, act)
 			l.validateEmits(spec, tag, act)
 			l.validateAssets(spec, tag, act)
@@ -205,6 +207,63 @@ func (l *lintRun) validateCoords(spec ActionSpec, tag Tag, a *model.DrawAction) 
 			fmt.Sprintf("@coords must be x,y or x,y,w,h, got %d numbers", len(tag.Coords)),
 			"use @x,y to place at native size, or @x,y,w,h to set the box")
 	}
+}
+
+// validateValueKind checks the non-enum argument kinds the grammar declares: a colour
+// must be #rrggbb and a number must be a number. Both are reported against the
+// parameter the table defines, so a new tag gets the check for free.
+func (l *lintRun) validateValueKind(spec ActionSpec, tag Tag, a *model.DrawAction) {
+	check := func(p Param, val string) {
+		if val == "" {
+			return
+		}
+		switch p.Kind {
+		case KindColor:
+			if !isHexColour(val) {
+				l.add(a, diag.E0006,
+					fmt.Sprintf("%s: %s=%q is not a colour", spec.Tag, p.Name, val),
+					"write a hex colour such as #EB4034")
+			}
+		case KindNumber:
+			body := strings.TrimSuffix(val, "%")
+			if _, err := strconv.ParseFloat(body, 64); err != nil {
+				unit := p.Unit
+				if unit != "" {
+					unit = " " + unit
+				}
+				l.add(a, diag.E0004,
+					fmt.Sprintf("%s: %s=%q is not a number%s", spec.Tag, p.Name, val, unit),
+					fmt.Sprintf("write %s= as a plain number%s", p.Name, unit))
+			}
+		}
+	}
+	for _, p := range spec.Keys {
+		if val, ok := tag.Key(p.Name); ok {
+			check(p, val)
+		}
+	}
+	for _, p := range spec.Positional {
+		if containsFold([]string{"id", "content", "title", "subtitle", "prompt", "text"}, p.Name) {
+			continue
+		}
+		if fillsSlot(spec, p.Name, tag) {
+			check(p, positionalValue(spec, tag, p.Name))
+		}
+	}
+}
+
+// isHexColour accepts #rrggbb and rrggbb.
+func isHexColour(v string) bool {
+	v = strings.TrimPrefix(strings.TrimSpace(v), "#")
+	if len(v) != 6 {
+		return false
+	}
+	for _, ch := range v {
+		if !((ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'f') || (ch >= 'A' && ch <= 'F')) {
+			return false
+		}
+	}
+	return true
 }
 
 // validateEnums checks every enum-typed argument against the table: presets and
@@ -375,23 +434,33 @@ func (l *lintRun) validateAssets(spec ActionSpec, tag Tag, a *model.DrawAction) 
 // idTracker resolves @refs against the ids defined earlier in the same script.
 type idTracker struct {
 	l       *lintRun
-	defined map[string]int
+	defined map[string]idDefinition
 }
 
-func newIDTracker(l *lintRun) *idTracker { return &idTracker{l: l, defined: map[string]int{}} }
+type idDefinition struct {
+	line int
+	tag  string
+}
+
+func newIDTracker(l *lintRun) *idTracker {
+	return &idTracker{l: l, defined: map[string]idDefinition{}}
+}
 
 func (t *idTracker) define(spec ActionSpec, tag Tag, a *model.DrawAction) {
 	id, ok := tag.Key("id")
 	if !ok || id == "" {
 		return
 	}
-	if line, dup := t.defined[id]; dup {
+	if prev, dup := t.defined[id]; dup && !(prev.tag == "character" && spec.Tag == "character") {
 		t.l.add(a, diag.E0013,
-			fmt.Sprintf("duplicate id %q, first defined on line %d", id, line),
+			fmt.Sprintf("duplicate id %q, first defined on line %d by [%s:]", id, prev.line, prev.tag),
 			"ids must be unique so an @ref resolves to exactly one element")
 		return
 	}
-	t.defined[id] = a.SrcLine
+	// Re-declaring the id of a [character:] is the state-switching idiom, not a
+	// collision: both tags address the same slot, and the compiler closes the previous
+	// state's window when the new one starts.
+	t.defined[id] = idDefinition{line: a.SrcLine, tag: spec.Tag}
 }
 
 func (t *idTracker) use(spec ActionSpec, a *model.DrawAction, ref string) {

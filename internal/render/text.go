@@ -62,7 +62,37 @@ func unescapeTextEscapes(s string) string {
 	return out.String()
 }
 
+// RenderText rasterises text in a single ink colour.
 func RenderText(text string, fontPreset string, size float64, isBold bool, fgColor color.Color) (image.Image, error) {
+	return RenderTextStyled(TextOptions{
+		Text: text, FontPreset: fontPreset, Size: size, Bold: isBold, Colour: fgColor,
+	})
+}
+
+// TextOptions describes a text raster.
+type TextOptions struct {
+	Text       string
+	FontPreset string
+	Size       float64
+	Bold       bool
+	Colour     color.Color
+	// OutlinePx strokes the glyphs by stamping the same glyph run at the 8 neighbour
+	// offsets, which is what keeps a caption readable over arbitrary artwork.
+	OutlinePx int
+	// OutlineColour defaults to near-black ink, the readable choice on light art.
+	OutlineColour color.Color
+}
+
+// RenderTextStyled rasterises text with an optional outline.
+func RenderTextStyled(opts TextOptions) (image.Image, error) {
+	fgColor := opts.Colour
+	if fgColor == nil {
+		fgColor = color.RGBA{A: 255}
+	}
+	text := opts.Text
+	fontPreset := opts.FontPreset
+	size := opts.Size
+	isBold := opts.Bold
 	if text == "" {
 		return image.NewRGBA(image.Rect(0, 0, 1, 1)), nil
 	}
@@ -104,8 +134,8 @@ func RenderText(text string, fontPreset string, size float64, isBold bool, fgCol
 		}
 	}
 
+	pad := 10 + opts.OutlinePx
 	// Calculate total dimensions with padding and line gaps
-	pad := 10
 	imgW := maxLineWidth + 2*pad
 
 	lineHeights := make([]int, len(lines))
@@ -125,23 +155,46 @@ func RenderText(text string, fontPreset string, size float64, isBold bool, fgCol
 
 	dst := image.NewRGBA(image.Rect(0, 0, imgW, imgH))
 	drawer.Dst = dst
-	drawer.Src = image.NewUniform(fgColor)
 
-	// Draw each line, maintaining the same baseline positioning as single-line
+	// Draw each line, maintaining the same baseline positioning as single-line.
+	// The outline pass runs first so the fill lands on top of it.
+	positions := make([]fixed.Point26_6, len(lines))
 	yOffset := pad - boundsSlice[0].Min.Y.Floor()
 	for i, b := range boundsSlice {
-		xOffset := pad - b.Min.X.Floor()
-
-		drawer.Dot = fixed.Point26_6{
-			X: fixed.I(xOffset),
-			Y: fixed.I(yOffset),
-		}
-		drawer.DrawString(lines[i])
-
+		positions[i] = fixed.Point26_6{X: fixed.I(pad - b.Min.X.Floor()), Y: fixed.I(yOffset)}
 		if i < len(lines)-1 {
 			yOffset += lineHeights[i] + lineGap
 		}
 	}
+
+	drawPass := func(tint color.Color, dx, dy int) {
+		drawer.Src = image.NewUniform(tint)
+		for i, dot := range positions {
+			drawer.Dot = fixed.Point26_6{X: dot.X + fixed.I(dx), Y: dot.Y + fixed.I(dy)}
+			drawer.DrawString(lines[i])
+		}
+	}
+
+	if opts.OutlinePx > 0 {
+		ink := opts.OutlineColour
+		if ink == nil {
+			ink = color.RGBA{R: 16, G: 16, B: 16, A: 255}
+		}
+		for dy := -opts.OutlinePx; dy <= opts.OutlinePx; dy++ {
+			for dx := -opts.OutlinePx; dx <= opts.OutlinePx; dx++ {
+				if dx == 0 && dy == 0 {
+					continue
+				}
+				// A filled square brush: only the ring at the stroke radius is needed,
+				// interior offsets would add nothing and cost a pass each.
+				if dx*dx+dy*dy > opts.OutlinePx*opts.OutlinePx+1 {
+					continue
+				}
+				drawPass(ink, dx, dy)
+			}
+		}
+	}
+	drawPass(fgColor, 0, 0)
 
 	return dst, nil
 }

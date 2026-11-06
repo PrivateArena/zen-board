@@ -102,9 +102,27 @@ type FrameEvent struct {
 	SrcLine        int     `json:"src_line,omitempty"`
 	SrcCol         int     `json:"src_col,omitempty"`
 	RevealDuration float64 `json:"reveal_duration,omitempty"`
+	// Layer is the draw order and camera behaviour class: "board" (default, empty
+	// string means the same) participates in the camera visibility test; "overlay" is
+	// drawn above everything and is deliberately camera-independent, which is what a
+	// mascot or a caption needs to survive a [zoom:] pointed elsewhere.
+	Layer string
+	// Sticky marks a layer that survives the board-wipe directives ([clear],
+	// [erase:all], [transition:]) - the cut loops rewrite every earlier event's
+	// EndFrame today, which is why an overlay cannot outlive a scene change.
+	Sticky bool
+	// ExitFrames is the length of the exit animation this event spawned, if any. An
+	// exit is a second event rather than a longer window because the cut loops rewrite
+	// EndFrame retroactively and would swallow it.
+	ExitFrames int
+	// ExitKind is the animation shape: "fade", "pop" or "slide". Only meaningful on
+	// the event whose ExitFrames is non-zero.
+	ExitKind string
 	// Slide-specific fields
 	Transition string // "none","fade","pop","slide-left","slide-right","slide-up","slide-down"
-	FitMode    string // "fit","fill","stretch"
+	FitMode    string // "fit","fill","stretch","native"
+	// Align positions a pixel-exact raster inside its box.
+	Align string
 	// Extended media fields
 	Opacity        float64
 	ColorHex       string

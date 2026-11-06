@@ -24,6 +24,7 @@ var (
 	genRegex        = mustPattern("gen", 0)
 	waitRegex       = mustPattern("wait", 0)
 	clearRegex      = mustPattern("clear", 0)
+	clearScopeRegex = mustPattern("clear", 1)
 	zoomRegex       = mustPattern("zoom", 0)
 	styleRegex      = mustPattern("style", 0)
 	chapterRegex    = mustPattern("chapter", 0)
@@ -38,6 +39,9 @@ var (
 	overlayRegex    = mustPattern("overlay", 0)
 	counterRegex    = mustPattern("counter", 0)
 	watermarkRegex  = mustPattern("watermark", 0)
+	characterRegex  = mustPattern("character", 0)
+	stickerRegex    = mustPattern("sticker", 0)
+	captionRegex    = mustPattern("caption", 0)
 )
 
 func mustPattern(tag string, i int) *regexp.Regexp {
@@ -122,27 +126,37 @@ func extractActions(line string, lineNo int, file string, lineOff, pad int) (str
 			assetID := line[m[2]:m[3]]
 			tag := assetID
 			variants := make(map[string]string)
+			var named []string
 			if len(m) >= 5 && m[4] != -1 && m[5] != -1 {
 				rawVariants := line[m[4]:m[5]]
-				if rawVariants != "" {
-					vparts := strings.Split(rawVariants, ":")
-					for _, vp := range vparts {
-						vp = strings.TrimSpace(vp)
-						if vp == "" {
-							continue
-						}
-						kv := strings.SplitN(vp, "=", 2)
-						if len(kv) == 2 && kv[1] != "" {
-							variants[strings.TrimSpace(kv[0])] = strings.TrimSpace(kv[1])
-						} else {
+				for _, vp := range strings.Split(rawVariants, ":") {
+					vp = strings.TrimSpace(vp)
+					if vp == "" {
+						continue
+					}
+					for _, tok := range strings.Fields(vp) {
+						key, _, isKV := cutKeyValue(tok)
+						switch {
+						case !isKV:
+							// A bare word is a positional argument: a preset or a duration.
 							if tag == assetID {
-								tag = assetID + ":" + vp
+								tag = assetID + ":" + tok
 							} else {
-								tag = tag + ":" + vp
+								tag += ":" + tok
 							}
+						case IsAuthoringKey(key) || DeclaresKey("draw", key):
+							// An engine parameter, not a paint attribute: it stays in the
+							// tag so the grammar can resolve it, and never reaches the SVG.
+							named = append(named, tok)
+						default:
+							kv := strings.SplitN(tok, "=", 2)
+							variants[strings.TrimSpace(kv[0])] = strings.TrimSpace(kv[1])
 						}
 					}
 				}
+			}
+			if len(named) > 0 {
+				tag += " " + strings.Join(named, " ")
 			}
 			ti := tagMatch{start: m[0], end: m[1], tag: tag, variants: variants}
 			if len(m) >= 8 && m[6] != -1 && m[7] != -1 {
@@ -219,6 +233,9 @@ func extractActions(line string, lineNo int, file string, lineOff, pad int) (str
 	extractComplexTag(compareRegex, constant.TAG_COMPARE)
 	extractComplexTag(transitionRegex, constant.TAG_TRANSITION)
 	extractComplexTag(overlayRegex, constant.TAG_OVERLAY)
+	extractComplexTag(characterRegex, constant.TAG_CHARACTER)
+	extractComplexTag(stickerRegex, constant.TAG_STICKER)
+	extractComplexTag(captionRegex, constant.TAG_CAPTION)
 	extractComplexTag(counterRegex, constant.TAG_COUNTER)
 
 	extractSimpleTag(zoomRegex, constant.TAG_ZOOM)
@@ -234,8 +251,15 @@ func extractActions(line string, lineNo int, file string, lineOff, pad int) (str
 	}
 
 	clearMatches := clearRegex.FindAllStringSubmatchIndex(line, -1)
+	clearMatches = append(clearMatches, clearScopeRegex.FindAllStringSubmatchIndex(line, -1)...)
 	for _, m := range clearMatches {
-		tags = append(tags, tagMatch{start: m[0], end: m[1], tag: constant.TAG_CLEAR})
+		tag := constant.TAG_CLEAR
+		// reClear has no capture group; reClearScoped has one. Indexing blind here
+		// panics on a plain [clear].
+		if len(m) > 3 && m[2] >= 0 {
+			tag = constant.TAG_CLEAR + ":" + line[m[2]:m[3]]
+		}
+		tags = append(tags, tagMatch{start: m[0], end: m[1], tag: tag})
 	}
 
 	sort.SliceStable(tags, func(i, j int) bool { return tags[i].start < tags[j].start })

@@ -8,6 +8,7 @@ import (
 	"zen-board/internal/constant"
 	"zen-board/internal/diag"
 	"zen-board/internal/model"
+	"zen-board/internal/script"
 )
 
 // errArity is returned by a handler whose tag carries fewer parts than it can
@@ -39,6 +40,56 @@ type actionContext struct {
 	actionTag      string
 	preset         string
 	revealDuration float64
+	// spec is the grammar entry the tag matched, and tag its resolved arguments. Both
+	// are computed once per action so no handler re-splits a tag by itself.
+	spec *script.ActionSpec
+	tag  script.Tag
+	// generatedID is the fallback identity, allocated once per action so a handler that
+	// needs it early and the stamping pass cannot disagree, and so the counter stays
+	// sequential.
+	generatedID string
+}
+
+// positional returns the tag's arguments with any `key=value` tail already removed,
+// which is what lets `[draw:robot:TR id=bot dur=6]` and `[draw:robot:TR:6]` reach the
+// same handler code. The result is unquoted, as every handler has always expected.
+func (ctx *actionContext) positional() []string {
+	if len(ctx.tag.Parts) > 0 {
+		return ctx.tag.Parts
+	}
+	return tagParts(strings.TrimPrefix(ctx.action.Tag, ctx.actionTag+":"))
+}
+
+// keys exposes the named parameters the tag carried.
+func (ctx *actionContext) key(name string) string {
+	v, _ := ctx.tag.Key(name)
+	return v
+}
+
+// parseTag resolves the action once against the grammar table. Called from
+// processAction before dispatch so that no handler has to split a tag by itself.
+func (ctx *actionContext) parseTag() {
+	spec, tag, ok := script.ParseTagSpec("[" + ctx.action.Tag + "]")
+	if !ok {
+		// A bare `[city]` is a draw - the dispatch chain falls through to
+		// handleDraw for exactly that reason, so the grammar lookup has to agree
+		// with the routing instead of giving up on an unprefixed asset id.
+		drawSpec, found := script.ByTag("draw")
+		if !found {
+			return
+		}
+		spec, tag = drawSpec, script.ParseTag(drawSpec, "["+ctx.action.Tag+"]", ctx.action.Tag, nil)
+	}
+	ctx.spec, ctx.tag = &spec, tag
+	ctx.tag.Parts = unquoteParts(tag.Parts)
+}
+
+func unquoteParts(parts []string) []string {
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		out = append(out, script.Unquote(p))
+	}
+	return out
 }
 
 // kind names the action family used to build a deterministic fallback identity.
@@ -114,7 +165,7 @@ func (c *timelineCompiler) dispatch(ctx *actionContext) error {
 	case strings.HasPrefix(tag, constant.TAG_GEN):
 		ctx.route = "gen"
 		c.handleGen(ctx)
-	case tag == constant.TAG_CLEAR:
+	case tag == constant.TAG_CLEAR || strings.HasPrefix(tag, constant.TAG_CLEAR+":"):
 		ctx.route = "clear"
 		c.handleClear(ctx)
 	case strings.HasPrefix(tag, constant.TAG_SLIDE):
@@ -135,6 +186,15 @@ func (c *timelineCompiler) dispatch(ctx *actionContext) error {
 	case strings.HasPrefix(tag, constant.TAG_COMPARE):
 		ctx.route = "compare"
 		return c.handleCompare(ctx)
+	case strings.HasPrefix(tag, constant.TAG_CHARACTER):
+		ctx.route = "character"
+		c.handleCharacter(ctx)
+	case strings.HasPrefix(tag, constant.TAG_STICKER):
+		ctx.route = "sticker"
+		c.handleSticker(ctx)
+	case strings.HasPrefix(tag, constant.TAG_CAPTION):
+		ctx.route = "caption"
+		c.handleCaption(ctx)
 	case strings.HasPrefix(tag, constant.TAG_OVERLAY):
 		ctx.route = "overlay"
 		c.handleOverlay(ctx)
@@ -222,16 +282,33 @@ func (c *timelineCompiler) handleText(ctx *actionContext) {
 			fontWeight = parts[4]
 		}
 
-		textAssetID := fmt.Sprintf("__text_%d", c.textAssetCount)
-		c.textAssetCount++
+		// The unified tail: anchor=, size=, color=, id= mean the same thing here as in
+		// every other placement tag, and win over the positional spellings above.
+		var tail script.Tag
+		if spec, parsed, ok := script.ParseTagSpec("[" + ctx.action.Tag + "]"); ok {
+			_ = spec
+			tail = parsed
+		}
+		if v := tagKey(tail, "anchor"); v != "" {
+			preset = v
+		}
+		if v, ok := tagNum(tail, "size"); ok {
+			fontSize = v
+		}
+		if v := tagKey(tail, "font"); v != "" {
+			fontFamily = v
+		}
+		if v := tagKey(tail, "weight"); v != "" {
+			fontWeight = v
+		}
 
-		c.textJobs = append(c.textJobs, TextRenderJob{
-			AssetID:    textAssetID,
+		textAssetID := c.newTextJob(TextRenderJob{
 			Content:    content,
 			FontFamily: fontFamily,
 			FontSize:   fontSize,
 			IsBold:     fontWeight == "bold",
 			Style:      c.currentStyle,
+			ColourHex:  tagKey(tail, "color"),
 		})
 
 		tx, ty, tw, th := ctx.action.X, ctx.action.Y, ctx.action.W, ctx.action.H
@@ -277,18 +354,9 @@ func (c *timelineCompiler) handleText(ctx *actionContext) {
 }
 
 func (c *timelineCompiler) handleEraseAll(ctx *actionContext) {
-	clearFrame := ctx.startFrame
-	var activeEvents []model.FrameEvent
-	for _, ev := range c.timeline.Events {
-		if ev.StartFrame >= clearFrame {
-			continue
-		}
-		if ev.EndFrame > clearFrame {
-			ev.EndFrame = clearFrame
-		}
-		activeEvents = append(activeEvents, ev)
-	}
-	c.timeline.Events = activeEvents
+	// [erase:*] is an explicit request to wipe the whole board, sticky layers included;
+	// [clear] is the scene change that keeps the presenter.
+	c.timeline.Events = cutEvents(c.timeline.Events, ctx.startFrame, false)
 	c.gridIndex = 0
 	// Inert marker so the eventlog records the board wipe
 	c.timeline.Events = append(c.timeline.Events, model.FrameEvent{
@@ -427,8 +495,9 @@ func (c *timelineCompiler) handleMove(ctx *actionContext) {
 }
 
 func (c *timelineCompiler) handleGen(ctx *actionContext) {
-	rest := strings.TrimPrefix(ctx.action.Tag, constant.TAG_GEN)
-	parts := tagParts(rest)
+	// The resolved arguments, keys already separated - so [gen:"p" anchor=TR] cannot
+	// become a prompt called `p anchor=TR`.
+	parts := ctx.positional()
 	prompt := parts[0]
 	preset := ""
 	if len(parts) > 1 {
@@ -484,19 +553,38 @@ func (c *timelineCompiler) handleGen(ctx *actionContext) {
 	})
 }
 
-func (c *timelineCompiler) handleClear(ctx *actionContext) {
-	clearFrame := ctx.startFrame
-	var activeEvents []model.FrameEvent
-	for _, ev := range c.timeline.Events {
-		if ev.StartFrame >= clearFrame {
+// cutEvents ends every event that is still on screen at atFrame.
+//
+// keepSticky decides whether a sticky layer (a character, a caption pinned for the
+// beat) survives the wipe. Today all three cut directives rewrite EndFrame for every
+// earlier event, which is why an overlay cannot outlive a scene change and why a
+// [transition:] eats the mascot at its midpoint.
+func cutEvents(events []model.FrameEvent, atFrame int, keepSticky bool) []model.FrameEvent {
+	out := make([]model.FrameEvent, 0, len(events))
+	for _, ev := range events {
+		if ev.StartFrame >= atFrame {
 			continue
 		}
-		if ev.EndFrame > clearFrame {
-			ev.EndFrame = clearFrame
+		if keepSticky && ev.Sticky {
+			out = append(out, ev)
+			continue
 		}
-		activeEvents = append(activeEvents, ev)
+		if ev.EndFrame > atFrame {
+			ev.EndFrame = atFrame
+		}
+		out = append(out, ev)
 	}
-	c.timeline.Events = activeEvents
+	return out
+}
+
+func (c *timelineCompiler) handleClear(ctx *actionContext) {
+	// [clear] wipes the board and keeps the characters; [clear:all] is the escape hatch
+	// for a genuine scene change.
+	scope := strings.TrimSpace(strings.TrimPrefix(ctx.action.Tag, constant.TAG_CLEAR))
+	if strings.HasPrefix(scope, ":") {
+		scope = strings.TrimPrefix(scope, ":")
+	}
+	c.timeline.Events = cutEvents(c.timeline.Events, ctx.startFrame, scope != "all")
 	c.gridIndex = 0
 	// Inert marker so the eventlog records the board wipe
 	c.timeline.Events = append(c.timeline.Events, model.FrameEvent{
@@ -507,8 +595,9 @@ func (c *timelineCompiler) handleClear(ctx *actionContext) {
 }
 
 func (c *timelineCompiler) handleSlide(ctx *actionContext) {
-	rest := strings.TrimPrefix(ctx.action.Tag, constant.TAG_SLIDE)
-	parts := tagParts(rest)
+	// The resolved arguments, keys already separated - so [slide:city anchor=br] cannot
+	// become an asset called "city anchor=br".
+	parts := ctx.positional()
 	asset := parts[0]
 	preset := ""
 	transition := constant.TRANSITION_NONE
@@ -564,8 +653,9 @@ func (c *timelineCompiler) handleSlide(ctx *actionContext) {
 }
 
 func (c *timelineCompiler) handleBanner(ctx *actionContext) {
-	rest := strings.TrimPrefix(ctx.action.Tag, constant.TAG_BANNER)
-	parts := tagParts(rest)
+	// The resolved arguments, keys already separated - so [slide:city anchor=br] cannot
+	// become an asset called "city anchor=br".
+	parts := ctx.positional()
 	title := ""
 	subtitle := ""
 	duration := 4.0
@@ -606,8 +696,9 @@ func (c *timelineCompiler) handleBanner(ctx *actionContext) {
 // and <position> is one of TL, TR, BL, BR (top-left, top-right, bottom-left,
 // bottom-right). The watermark persists for the entire video duration.
 func (c *timelineCompiler) handleWatermark(ctx *actionContext) {
-	rest := strings.TrimPrefix(ctx.action.Tag, constant.TAG_WATERMARK)
-	parts := tagParts(rest)
+	// The resolved arguments, keys already separated - so [slide:city anchor=br] cannot
+	// become an asset called "city anchor=br".
+	parts := ctx.positional()
 	source := parts[0]
 	position := "TL"
 	if len(parts) > 1 {
@@ -631,9 +722,19 @@ func (c *timelineCompiler) handleWatermark(ctx *actionContext) {
 	})
 }
 
+// namedDuration returns dur= when the tag carried one, so the named spelling wins over the
+// positional one the caller already parsed - the same precedence the grammar promises.
+func (ctx *actionContext) namedDuration(def float64) float64 {
+	if v, ok := tagNum(ctx.tag, "dur"); ok && v > 0 {
+		return v
+	}
+	return def
+}
+
 func (c *timelineCompiler) handleArrow(ctx *actionContext) error {
-	rest := strings.TrimPrefix(ctx.action.Tag, constant.TAG_ARROW)
-	parts := tagParts(rest)
+	// The resolved arguments, keys already separated - so [slide:city anchor=br] cannot
+	// become an asset called "city anchor=br".
+	parts := ctx.positional()
 	if len(parts) < 2 || parts[1] == "" {
 		return errArity{
 			tag:     "[" + constant.TAG_ARROW + "from:to[:style][:duration]]",
@@ -654,6 +755,27 @@ func (c *timelineCompiler) handleArrow(ctx *actionContext) error {
 			duration = d
 		}
 	}
+	duration = ctx.namedDuration(duration)
+
+	// Element references resolve now, while the compiler knows what is on screen. An
+	// unresolvable @ref is reported rather than falling through to "the whole canvas".
+	fromRef, badFrom := c.resolveEndpoint(ctx, from)
+	if badFrom != "" {
+		c.recordUnresolvedRef(ctx, badFrom)
+		return nil
+	}
+	toRef, badTo := c.resolveEndpoint(ctx, to)
+	if badTo != "" {
+		c.recordUnresolvedRef(ctx, badTo)
+		return nil
+	}
+	from, to = fromRef, toRef
+	// An arrow between placed elements belongs with them: leaving it on the board layer
+	// would pan it away from the thing it names.
+	arrowLayer := c.endpointLayer(ctx, from)
+	if l := c.endpointLayer(ctx, to); l != "" {
+		arrowLayer = l
+	}
 
 	end := ctx.startFrame + int(duration*float64(c.conf.FPS))
 	c.timeline.Events = append(c.timeline.Events, model.FrameEvent{
@@ -663,6 +785,7 @@ func (c *timelineCompiler) handleArrow(ctx *actionContext) error {
 		ArrowFrom:  from,
 		ArrowTo:    to,
 		ArrowStyle: style,
+		Layer:      arrowLayer,
 		ZoomFocus:  c.currentZoomFocus,
 	})
 	c.timeline.Events = append(c.timeline.Events, model.FrameEvent{
@@ -672,15 +795,31 @@ func (c *timelineCompiler) handleArrow(ctx *actionContext) error {
 		ArrowFrom:  from,
 		ArrowTo:    to,
 		ArrowStyle: style,
+		Layer:      arrowLayer,
 		ZoomFocus:  c.currentZoomFocus,
 	})
 	return nil
 }
 
 func (c *timelineCompiler) handleHighlight(ctx *actionContext) {
-	rest := strings.TrimPrefix(ctx.action.Tag, constant.TAG_HIGHLIGHT)
-	parts := tagParts(rest)
+	// The resolved arguments, keys already separated - so [slide:city anchor=br] cannot
+	// become an asset called "city anchor=br".
+	parts := ctx.positional()
 	region := parts[0]
+	layer := ""
+	if ref, isRef := elementRef(region); isRef {
+		resolved, ok := c.resolveRefArg(region, ctx.startFrame, true)
+		if !ok {
+			c.recordUnresolvedRef(ctx, ref)
+			return
+		}
+		region = resolved
+		// A ring around a presenter must sit with the presenter: leaving it on the board
+		// would draw it under the camera crop the referenced layer escaped.
+		if ev, found := c.anchorEvent(ref, ctx.startFrame); found {
+			layer = ev.Layer
+		}
+	}
 	style := constant.HIGHLIGHT_RECT
 	duration := 2.0
 	if len(parts) > 1 && parts[1] != "" {
@@ -691,6 +830,7 @@ func (c *timelineCompiler) handleHighlight(ctx *actionContext) {
 			duration = d
 		}
 	}
+	duration = ctx.namedDuration(duration)
 
 	end := ctx.startFrame + int(duration*float64(c.conf.FPS))
 	c.timeline.Events = append(c.timeline.Events, model.FrameEvent{
@@ -699,13 +839,15 @@ func (c *timelineCompiler) handleHighlight(ctx *actionContext) {
 		EventType:      constant.EVENT_HIGHLIGHT,
 		TargetImage:    region,
 		HighlightStyle: style,
+		Layer:          layer,
 		ZoomFocus:      c.currentZoomFocus,
 	})
 }
 
 func (c *timelineCompiler) handleCompare(ctx *actionContext) error {
-	rest := strings.TrimPrefix(ctx.action.Tag, constant.TAG_COMPARE)
-	parts := tagParts(rest)
+	// The resolved arguments, keys already separated - so [slide:city anchor=br] cannot
+	// become an asset called "city anchor=br".
+	parts := ctx.positional()
 	if len(parts) < 2 || parts[1] == "" {
 		return errArity{
 			tag:     "[" + constant.TAG_COMPARE + "left:right[:labelL][:labelR]]",
@@ -749,8 +891,9 @@ func (c *timelineCompiler) handleCompare(ctx *actionContext) error {
 }
 
 func (c *timelineCompiler) handleOverlay(ctx *actionContext) {
-	rest := strings.TrimPrefix(ctx.action.Tag, constant.TAG_OVERLAY)
-	parts := tagParts(rest)
+	// The resolved arguments, keys already separated - so [slide:city anchor=br] cannot
+	// become an asset called "city anchor=br".
+	parts := ctx.positional()
 	asset := parts[0]
 	opacity := 0.5
 	preset := constant.PRESET_FULLSCREEN
@@ -774,8 +917,9 @@ func (c *timelineCompiler) handleOverlay(ctx *actionContext) {
 }
 
 func (c *timelineCompiler) handleTransition(ctx *actionContext) {
-	rest := strings.TrimPrefix(ctx.action.Tag, constant.TAG_TRANSITION)
-	parts := tagParts(rest)
+	// The resolved arguments, keys already separated - so [slide:city anchor=br] cannot
+	// become an asset called "city anchor=br".
+	parts := ctx.positional()
 	tType := parts[0]
 	duration := 0.5
 	if len(parts) > 1 && parts[1] != "" {
@@ -787,18 +931,9 @@ func (c *timelineCompiler) handleTransition(ctx *actionContext) {
 	end := ctx.startFrame + int(duration*float64(c.conf.FPS))
 	midpoint := ctx.startFrame + int(duration*float64(c.conf.FPS))/2
 
-	// Truncate all active events at the midpoint of the transition
-	var activeEvents []model.FrameEvent
-	for _, ev := range c.timeline.Events {
-		if ev.StartFrame >= midpoint {
-			continue
-		}
-		if ev.EndFrame > midpoint {
-			ev.EndFrame = midpoint
-		}
-		activeEvents = append(activeEvents, ev)
-	}
-	c.timeline.Events = activeEvents
+	// Truncate the board at the midpoint of the transition. A sticky layer is left
+	// standing: a wipe between scenes is not a reason for the mascot to disappear.
+	c.timeline.Events = cutEvents(c.timeline.Events, midpoint, true)
 	c.gridIndex = 0
 
 	c.timeline.Events = append(c.timeline.Events, model.FrameEvent{
@@ -811,8 +946,9 @@ func (c *timelineCompiler) handleTransition(ctx *actionContext) {
 }
 
 func (c *timelineCompiler) handleCounter(ctx *actionContext) {
-	rest := strings.TrimPrefix(ctx.action.Tag, constant.TAG_COUNTER)
-	parts := tagParts(rest)
+	// The resolved arguments, keys already separated - so [slide:city anchor=br] cannot
+	// become an asset called "city anchor=br".
+	parts := ctx.positional()
 	cStart := 0.0
 	cEnd := 0.0
 	duration := 2.0
@@ -889,7 +1025,16 @@ func (c *timelineCompiler) handleDraw(ctx *actionContext) {
 		drawFocus = c.currentZoomFocus
 	}
 
-	cursorName := extractCursor(ctx.action.AssetVariant, constant.CURSOR_HAND)
+	// The cursor may arrive as a named parameter ([draw:robot cursor=magic_wand]) or, as
+	// it did before named parameters existed, in the SVG variant map.
+	cursorName := firstNonEmpty(ctx.key("cursor"), extractCursor(ctx.action.AssetVariant, constant.CURSOR_HAND))
+	// A key the grammar declares is a parameter, not an SVG attribute. Leaving `id=` in
+	// the variant map would set a literal id attribute on the rasterised SVG.
+	for name := range ctx.action.AssetVariant {
+		if script.IsAuthoringKey(name) {
+			delete(ctx.action.AssetVariant, name)
+		}
+	}
 
 	// Reveal animation event
 	c.timeline.Events = append(c.timeline.Events, model.FrameEvent{

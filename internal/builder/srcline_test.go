@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"zen-board/internal/constant"
 	"zen-board/internal/model"
 	"zen-board/internal/script"
 )
@@ -110,6 +111,13 @@ func TestSrcLinePropagation(t *testing.T) {
 
 // TestEventIdentityIsStable: the derived identity must be stable across runs and
 // shared by the reveal event and the persistence event it produced.
+// isCharacterState recognises the one legitimate shared identity: a character layer
+// addressed by an explicit id= across its state changes. A generated identity always
+// carries a "#<n>" suffix, so it can never be shared by two tags.
+func isCharacterState(ev model.FrameEvent) bool {
+	return ev.Layer == constant.LAYER_OVERLAY && !strings.Contains(ev.ID, "#")
+}
+
 func TestEventIdentityIsStable(t *testing.T) {
 	for _, name := range exampleNames(t) {
 		t.Run(name, func(t *testing.T) {
@@ -127,13 +135,15 @@ func TestEventIdentityIsStable(t *testing.T) {
 				}
 			}
 			// One identity per authored element: the reveal and the persistence event
-			// it spawns are one logical thing, so they must share an ID - and nothing
-			// else may share it. Two different tags can never collide on an ID.
+			// it spawns are one logical thing, so they must share an ID. Two different
+			// tags may never collide on a generated identity - the exception is an
+			// explicit id= on a [character:], where reusing the address across state
+			// changes is the whole mechanism.
 			type tagPos struct{ line, col int }
 			owners := map[string]tagPos{}
 			for _, ev := range a.Timeline.Events {
 				p := tagPos{ev.SrcLine, ev.SrcCol}
-				if first, seen := owners[ev.ID]; seen && first != p {
+				if first, seen := owners[ev.ID]; seen && first != p && !isCharacterState(ev) {
 					t.Errorf("id %q claimed by two different tags: %v and %v", ev.ID, first, p)
 				}
 				owners[ev.ID] = p

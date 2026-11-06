@@ -25,6 +25,9 @@ const (
 	TAG_HIGHLIGHT  = "highlight:"
 	TAG_COMPARE    = "compare:"
 	TAG_OVERLAY    = "overlay:"
+	TAG_CHARACTER  = "character:"
+	TAG_CAPTION    = "caption:"
+	TAG_STICKER    = "sticker:"
 	TAG_TRANSITION = "transition:"
 	TAG_COUNTER    = "counter:"
 	TAG_WATERMARK  = "watermark:"
@@ -53,6 +56,19 @@ const (
 	EVENT_WATERMARK    = "watermark"
 	EVENT_STYLE        = "style"
 	EVENT_CHAPTER      = "chapter"
+)
+
+// Draw layers. The empty string means LAYER_BOARD, so a script written before layers
+// existed compiles to the same events it always did.
+const (
+	LAYER_BOARD   = "board"
+	LAYER_OVERLAY = "overlay"
+)
+
+// FrameEvent.ExitKind values.
+const (
+	EXIT_FADE = "fade"
+	EXIT_POP  = "pop"
 )
 
 // FrameEvent.MaskStyle values.
@@ -100,8 +116,17 @@ const (
 
 // Slide transition and fit-mode defaults.
 const (
+	// FrameEvent.Align values.
+	ALIGN_LEFT   = "left"
+	ALIGN_CENTRE = "center"
+	ALIGN_RIGHT  = "right"
+
 	TRANSITION_NONE = "none"
+	TRANSITION_POP  = "pop"
 	FIT_FIT         = "fit"
+	// FIT_NATIVE blits a raster at its own pixel size instead of scaling it to the
+	// layout box, which is what makes `[caption:… size=110]` produce 110-px glyphs.
+	FIT_NATIVE = "native"
 )
 
 // Font and overlay keywords.
